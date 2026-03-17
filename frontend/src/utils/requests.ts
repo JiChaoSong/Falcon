@@ -4,6 +4,35 @@ import axios, {
 
 import {message} from "ant-design-vue";
 import type { ApiResponse } from '@/types/api'
+import { useUserStore } from '@/store/modules/user'
+import router from '@/router'
+
+
+let isRedirectingToLogin = false
+
+const redirectToLogin = async () => {
+    const userStore = useUserStore()
+    const currentRoute = router.currentRoute.value
+    const redirect = currentRoute.fullPath && currentRoute.path !== '/login'
+        ? currentRoute.fullPath
+        : '/dashboard'
+
+    userStore.resetState()
+
+    if (isRedirectingToLogin || currentRoute.path === '/login') {
+        return
+    }
+
+    isRedirectingToLogin = true
+    try {
+        await router.replace({
+            path: '/login',
+            query: { redirect },
+        })
+    } finally {
+        isRedirectingToLogin = false
+    }
+}
 
 
 const service:AxiosInstance = axios.create({
@@ -28,12 +57,31 @@ service.interceptors.response.use((response:AxiosResponse) => {
     const res = response.data as ApiResponse
     if (res.code === 20000) {
         return response.data
-    }else {
+    } else {
+        const isAuthExpired = res.code === 40001
+            || res.code === 42001
+            || String(res.message || '').includes('登录信息失效')
+
+        if (isAuthExpired) {
+            message.error(res.message || "登录信息失效，请重新登录！", 3)
+            void redirectToLogin()
+            return Promise.reject(new Error(res.message || 'Login expired'))
+        }
+
         message.error(res.message || "请求失败", 5)
         return Promise.reject(new Error(res.message || 'Error'))
     }
 }, error => {
-    message.error(error);
+    const status = error?.response?.status
+    const responseMessage = error?.response?.data?.message
+
+    if (status === 401 || status === 403) {
+        message.error(responseMessage || "登录信息失效，请重新登录！", 3)
+        void redirectToLogin()
+        return Promise.reject(error)
+    }
+
+    message.error(responseMessage || error?.message || "请求失败");
     return Promise.reject(error);
 })
 

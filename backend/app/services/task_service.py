@@ -10,18 +10,20 @@
 """
 import math
 from contextlib import contextmanager
+from enum import Enum
 from typing import Optional, Dict, Any, List
 
 import logging
 import time
-from sqlalchemy import Select, false, select, Delete
+from sqlalchemy import Select, false, select, Delete, cast, func, or_, exists
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy import String, Text
 
 from app.core.exception import ParamException
-from app.models import Tasks, TaskScenario, Scenario
+from app.models import Tasks, TaskScenario, Scenario, TaskExecutionStrategyEnum
 from app.schemas import task as schemas
+from app.services.access_control_service import AccessControlService
 from app.services.base_service import BaseService, ModelType
 
 
@@ -31,6 +33,7 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
         super().__init__(db, Tasks)
         # 可以重写基类的logger，使日志显示正确的服务名称
         self.logger = logging.getLogger(__name__)
+        self.access_control = AccessControlService(db)
 
     @contextmanager
     def _transaction_with_retry(self, max_retries: int = 3):
@@ -67,6 +70,7 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
         if not task:
             self.logger.error(f'任务不存在:{task_id}')
             raise ParamException('任务不存在')
+        self.access_control.ensure_project_view_access(task.project_id)
         return task
 
     def _validate_task_name_unique(self, name: str, project_id: int,
@@ -113,6 +117,18 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
 
         return [scenario_map[item.scenario_id] for item in scenario_binds]
 
+    def _validate_task_strategy_config(
+        self,
+        execution_strategy: TaskExecutionStrategyEnum | None,
+        scenario_binds: List[schemas.TaskScenarioBind],
+    ) -> None:
+        if execution_strategy != TaskExecutionStrategyEnum.WEIGHTED:
+            return
+
+        total_weight = sum(max(int(item.weight or 0), 0) for item in scenario_binds)
+        if total_weight <= 0:
+            raise ParamException("按权重分配时，场景权重总和必须大于 0")
+
     def _replace_task_scenarios(
         self,
         task_id: int,
@@ -132,6 +148,8 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
                     scenario_id=scenario.id,
                     scenario=scenario.name,
                     order=bind.order,
+                    weight=bind.weight,
+                    target_users=bind.target_users,
                 )
             )
 
@@ -148,6 +166,8 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
                 "scenario_id": item.scenario_id,
                 "scenario": item.scenario,
                 "order": item.order,
+                "weight": item.weight,
+                "target_users": item.target_users,
             }
             for item in task_scenarios
         ]
@@ -164,16 +184,10 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
     def list(self, page: int = 1, page_size: int = 10, **kwargs):
         scenario_id = kwargs.pop("scenario_id", None)
         query = self.db.query(Tasks).filter(Tasks.is_deleted == false())
+        accessible_project_ids = self.access_control.get_accessible_project_ids()
 
-        if scenario_id is not None:
-            task_ids = self.db.execute(
-                Select(TaskScenario.task_id).where(
-                    TaskScenario.scenario_id == scenario_id,
-                    TaskScenario.is_deleted == false(),
-                )
-            ).scalars().all()
-
-            if not task_ids:
+        if accessible_project_ids is not None:
+            if not accessible_project_ids:
                 return {
                     "results": [],
                     "total": 0,
@@ -181,10 +195,23 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
                     "page": page,
                     "page_size": page_size,
                 }
+            query = query.filter(Tasks.project_id.in_(accessible_project_ids))
 
-            query = query.filter(Tasks.id.in_(task_ids))
+        if scenario_id is not None:
+            query = query.filter(
+                exists(
+                    Select(TaskScenario.task_id).where(
+                        TaskScenario.task_id == Tasks.id,
+                        TaskScenario.scenario_id == scenario_id,
+                        TaskScenario.is_deleted == false(),
+                    )
+                )
+            )
 
-        valid_query = {key: val for key, val in kwargs.items() if val is not None}
+        valid_query = {
+            key: val for key, val in kwargs.items()
+            if val is not None and not (isinstance(val, str) and not val.strip())
+        }
         valid_query.pop("page", None)
         valid_query.pop("page_size", None)
 
@@ -193,7 +220,22 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
                 continue
 
             field = getattr(Tasks, field_name)
-            if isinstance(field.type, (String, Text)):
+            if isinstance(value, Enum):
+                enum_candidates = {
+                    value.value,
+                    value.name,
+                    str(value.value).lower(),
+                    str(value.name).lower(),
+                    str(value.value).upper(),
+                    str(value.name).upper(),
+                }
+                query = query.filter(
+                    or_(*[
+                        func.lower(cast(field, String)) == str(candidate).lower()
+                        for candidate in enum_candidates
+                    ])
+                )
+            elif isinstance(field.type, (String, Text)):
                 query = query.filter(field.ilike(f"%{value}%"))
             else:
                 query = query.filter(field == value)
@@ -218,6 +260,7 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
         """删除任务（软删除）"""
         with self._transaction_with_retry():
             task = self._get_task_by_id(id)
+            self.access_control.ensure_project_manage_access(task.project_id)
 
             if getattr(task, 'is_deleted', False):
                 self.logger.warning(f"任务已被删除 - ID: {id}")
@@ -252,7 +295,10 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
         create_data = data.model_dump()
         name = create_data.get('name')
         project_id = create_data.get('project_id')
+        self.access_control.ensure_project_manage_access(project_id)
         scenarios = [schemas.TaskScenarioBind(**item) for item in create_data.pop("scenarios", [])]
+        execution_strategy = create_data.get("execution_strategy")
+        self._validate_task_strategy_config(execution_strategy, scenarios)
 
         try:
             # 验证名称唯一性
@@ -286,6 +332,7 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
         name = update_data.get('name')
         project_id = update_data.get('project_id')
         scenarios = update_data.pop("scenarios", None)
+        execution_strategy = update_data.get("execution_strategy")
 
         if not task_id:
             raise ParamException("任务ID不能为空")
@@ -293,6 +340,7 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
         try:
             # 获取任务
             task = self._get_task_by_id(task_id)
+            self.access_control.ensure_project_manage_access(task.project_id)
 
             if project_id is not None and project_id != task.project_id and scenarios is None:
                 raise ParamException("修改所属项目时，请同时更新场景列表")
@@ -325,6 +373,7 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
 
             if scenarios is not None:
                 scenario_binds = [schemas.TaskScenarioBind(**item) for item in scenarios]
+                self._validate_task_strategy_config(execution_strategy or task.execution_strategy, scenario_binds)
                 current_project_id = task.project_id
                 self._replace_task_scenarios(task.id, current_project_id, scenario_binds)
                 updated_fields.append("scenarios")

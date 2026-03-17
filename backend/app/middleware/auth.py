@@ -10,7 +10,7 @@
 """
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
-from app.core.response import SuccessResponse, AuthExceptResponse
+from app.core.response import AuthExceptResponse
 from app.core.security import verify_access_token
 from fastapi.responses import JSONResponse
 import logging
@@ -38,10 +38,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         payload = verify_access_token(token)
         logger.info(f"token信息:{payload}")
-        set_current_user(payload.id, payload.username)
 
         if not payload:
             return JSONResponse(content=AuthExceptResponse())
+
+        set_current_user(payload.id, payload.username)
 
         # request.state.user = payload
 

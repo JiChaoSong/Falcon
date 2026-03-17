@@ -2,6 +2,7 @@
 
 import UserInfoComponent from "@/layout/components/UserInfoComponent.vue";
 import {LogoutOutlined, SettingOutlined, UserOutlined} from "@ant-design/icons-vue";
+import { useUserStore } from '@/store/modules/user'
 
 const router = useRouter()
 

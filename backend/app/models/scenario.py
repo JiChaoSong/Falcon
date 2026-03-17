@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLAlchemyEnum
+from sqlalchemy import BigInteger, Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLAlchemyEnum
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from app.db import Base
 from app.models import BaseModel
@@ -30,7 +30,7 @@ class Scenario(BaseModel):
 
 
     name: Mapped[str] = mapped_column(String(255), comment="场景名称")
-    project_id:Mapped[int] = mapped_column(Integer, nullable=False, comment='所属项目id')
+    project_id:Mapped[int] = mapped_column(BigInteger, nullable=False, comment='所属项目id')
     project: Mapped[str] = mapped_column(String(50), nullable=False, comment="所属项目名称")
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True, comment="用例描述")
     status: Mapped[ScenarioStatusEnum] = mapped_column(
@@ -44,7 +44,7 @@ class Scenario(BaseModel):
 class ScenarioCase(BaseModel):
     __tablename__ = "scenario_cases"
 
-    scenario_id:Mapped[int] = mapped_column(Integer, comment='场景id')
-    case_id:Mapped[int] = mapped_column(Integer, comment='用例id')
+    scenario_id:Mapped[int] = mapped_column(BigInteger, comment='场景id')
+    case_id:Mapped[int] = mapped_column(BigInteger, comment='用例id')
     order:Mapped[int] = mapped_column(Integer, default=0, comment='序号')
     weight:Mapped[int] = mapped_column(Integer, default=0, comment='权重')

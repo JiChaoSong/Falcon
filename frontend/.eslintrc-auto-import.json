@@ -91,7 +91,6 @@
     "useRouter": true,
     "useSlots": true,
     "useTemplateRef": true,
-    "useUserStore": true,
     "watch": true,
     "watchEffect": true,
     "watchPostEffect": true,

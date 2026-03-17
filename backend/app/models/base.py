@@ -12,20 +12,22 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 
 import inflection
-from sqlalchemy import Boolean, DateTime, Integer, func, inspect, String
+from sqlalchemy import BigInteger, Boolean, DateTime, func, inspect, String
 from sqlalchemy.orm import declarative_base, Mapped, mapped_column, declared_attr
 
 from app.db import Base
 from app.decorators.audit import get_current_user
+from app.utils.id_generator import generate_id
 
 
 class BaseModel(Base):
     __abstract__ = True
 
     id: Mapped[int] = mapped_column(
-        Integer,
+        BigInteger,
         primary_key=True,
-        autoincrement=True,
+        autoincrement=False,
+        default=generate_id,
         index=True,
         comment="主键ID"
     )
@@ -38,7 +40,7 @@ class BaseModel(Base):
     )
 
     created_by: Mapped[Optional[int]] = mapped_column(
-        Integer,
+        BigInteger,
         nullable=True,
         comment="创建人ID"
     )
@@ -58,7 +60,7 @@ class BaseModel(Base):
     )
 
     updated_by: Mapped[Optional[int]] = mapped_column(
-        Integer,
+        BigInteger,
         nullable=True,
         comment="更新人ID"
     )
@@ -83,7 +85,7 @@ class BaseModel(Base):
     )
 
     deleted_by: Mapped[Optional[int]] = mapped_column(
-        Integer,
+        BigInteger,
         nullable=True,
         comment="删除人ID"
     )

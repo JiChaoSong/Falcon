@@ -19,6 +19,6 @@ export interface TaskInfoResult {
 export const tasksApi =  {
     // 任务查询
     taskInfo(data: TaskInfo): Promise<ApiResponse<TaskInfoResult>> {
-        return http.post<ApiResponse<TaskInfoResult>>('/api/tasks/info', data)
+        return http.post<ApiResponse<TaskInfoResult>>('/api/task/info', { id: data.task_id })
     }
 }

@@ -190,6 +190,7 @@ import {
   message
 } from 'ant-design-vue'
 import type { FormProps } from 'ant-design-vue'
+import { useUserStore } from '@/store/modules/user'
 
 // 自定义Google图标组件
 const GoogleCircleFilled = {
@@ -238,23 +239,21 @@ export default defineComponent({
       remember: false
     })
 
-    const onFinish: FormProps['onFinish'] = (values) => {
+    const onFinish: FormProps['onFinish'] = async (values) => {
       loading.value = true
 
-      // 模拟登录API调用
-      setTimeout(() => {
-        userStore.login(values)
+      try {
+        await userStore.login({
+          username: values.username as string,
+          password: values.password as string,
+        })
         message.success('登录成功')
+        await router.push('/')
+      } catch (error) {
+        message.error('登录失败，请检查用户名和密码')
+      } finally {
         loading.value = false
-        router.push('/')
-      }, 1500)
-    }
-
-    // 验证是否为站内路由
-    const isInternalRoute = (url: string): boolean => {
-      // 简单判断，确保是相对路径或者与当前站点同源
-      // 这里假设我们只允许相对路径（以'/'开头）
-      return url.startsWith('/')
+      }
     }
 
     const onFinishFailed: FormProps['onFinishFailed'] = (errorInfo) => {

@@ -11,7 +11,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, func
+from sqlalchemy import BigInteger, Column, Integer, String, DateTime, Boolean, func
 from sqlalchemy.orm import validates, Mapped, mapped_column
 from passlib.context import CryptContext
 

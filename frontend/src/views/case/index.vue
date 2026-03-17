@@ -1,32 +1,16 @@
 <template>
   <div class="app-container">
-    <!-- 页面标题和操作 -->
     <div class="page-header">
       <div class="page-title-section">
         <h1 class="page-title">用例管理</h1>
-        <p class="page-subtitle">压测用例创建、编辑、调试，支持多种协议和复杂业务逻辑，为场景提供基础测试单元</p>
+        <p class="page-subtitle">维护压测基础用例，统一关联项目、请求配置与断言逻辑。</p>
       </div>
 
       <Space>
-        <!-- 视图切换 -->
-<!--        <Button.Group>-->
-<!--          <Button-->
-<!--              :type="state.viewMode === 'card' ? 'primary' : 'default'"-->
-<!--              @click="switchView('card')"-->
-<!--          >-->
-<!--            <template #icon><AppstoreOutlined /></template>-->
-<!--            卡片视图-->
-<!--          </Button>-->
-<!--          <Button-->
-<!--              :type="state.viewMode === 'table' ? 'primary' : 'default'"-->
-<!--              @click="switchView('table')"-->
-<!--          >-->
-<!--            <template #icon><UnorderedListOutlined /></template>-->
-<!--            表格视图-->
-<!--          </Button>-->
-<!--        </Button.Group>-->
-
-        <!-- 新增用例按钮 -->
+        <Button @click="showImportModal">
+          <template #icon><ImportOutlined /></template>
+          导入用例
+        </Button>
         <Button type="primary" @click="showAddModal">
           <template #icon><PlusOutlined /></template>
           新增用例
@@ -34,100 +18,41 @@
       </Space>
     </div>
 
-<!--    &lt;!&ndash; 统计卡片 &ndash;&gt;-->
-<!--    <Row :gutter="16" class="stats-row">-->
-<!--      <Col :span="6">-->
-<!--        <ACard>-->
-<!--          <Statistic-->
-<!--              title="用例总数"-->
-<!--              :value="statistics.total"-->
-<!--              :value-style="{ color: '#1890ff', fontSize: '24px' }"-->
-<!--          >-->
-<!--            <template #prefix><ProjectOutlined /></template>-->
-<!--            <template #suffix>-->
-<!--              <span style="font-size: 12px; color: #666">较上月 +12</span>-->
-<!--            </template>-->
-<!--          </Statistic>-->
-<!--        </ACard>-->
-<!--      </Col>-->
-<!--      <Col :span="6">-->
-<!--        <ACard>-->
-<!--          <Statistic-->
-<!--              title="启用用例"-->
-<!--              :value="statistics.active"-->
-<!--              :value-style="{ color: '#52c41a', fontSize: '24px' }"-->
-<!--          >-->
-<!--            <template #prefix><PlayCircleOutlined /></template>-->
-<!--            <template #suffix>-->
-<!--              <span style="font-size: 12px; color: #666">占比 {{ Math.round((statistics.active / statistics.total) * 100) }}%</span>-->
-<!--            </template>-->
-<!--          </Statistic>-->
-<!--        </ACard>-->
-<!--      </Col>-->
-<!--      <Col :span="6">-->
-<!--        <ACard>-->
-<!--          <Statistic-->
-<!--              title="HTTP用例"-->
-<!--              :value="statistics.httpCount"-->
-<!--              :value-style="{ color: '#faad14', fontSize: '24px' }"-->
-<!--          >-->
-<!--            <template #prefix><ApiOutlined /></template>-->
-<!--            <template #suffix>-->
-<!--              <span style="font-size: 12px; color: #666">占比 {{ Math.round((statistics.httpCount / statistics.total) * 100) }}%</span>-->
-<!--            </template>-->
-<!--          </Statistic>-->
-<!--        </ACard>-->
-<!--      </Col>-->
-<!--      <Col :span="6">-->
-<!--        <ACard>-->
-<!--          <Statistic-->
-<!--              title="跨项目用例"-->
-<!--              :value="statistics.projects"-->
-<!--              :value-style="{ color: '#13c2c2', fontSize: '24px' }"-->
-<!--          >-->
-<!--            <template #prefix><ScheduleOutlined /></template>-->
-<!--            <template #suffix>-->
-<!--              <span style="font-size: 12px; color: #666">{{ statistics.uniqueProjects }} 个项目</span>-->
-<!--            </template>-->
-<!--          </Statistic>-->
-<!--        </ACard>-->
-<!--      </Col>-->
-<!--    </Row>-->
-
-    <!-- 筛选区域 -->
     <ACard title="用例筛选" class="filter-card">
       <template #extra><FilterOutlined /></template>
 
       <Row :gutter="16">
         <Col :span="6">
           <Input
-              v-model:value="state.searchFilters.name"
-              placeholder="输入用例名称或描述"
-              allow-clear
-              @pressEnter="applyFilters"
+            v-model:value="state.searchFilters.name"
+            placeholder="输入用例名称"
+            allow-clear
+            @pressEnter="applyFilters"
           />
         </Col>
         <Col :span="6">
           <Select
-              v-model:value="state.searchFilters.project"
-              placeholder="所属项目"
-              allow-clear
-              style="width: 100%"
+            v-model:value="state.searchFilters.project_id"
+            placeholder="所属项目"
+            allow-clear
+            style="width: 100%"
           >
-            <Select.Option value="">全部项目</Select.Option>
-            <Select.Option value="电商平台">电商平台</Select.Option>
-            <Select.Option value="API网关">API网关</Select.Option>
-            <Select.Option value="用户中心">用户中心</Select.Option>
-            <Select.Option value="支付系统">支付系统</Select.Option>
-            <Select.Option value="搜索引擎">搜索引擎</Select.Option>
+            <Select.Option :value="undefined">全部项目</Select.Option>
+            <Select.Option
+              v-for="project in state.projectOptions"
+              :key="project.id"
+              :value="project.id"
+            >
+              {{ project.name }}
+            </Select.Option>
           </Select>
         </Col>
         <Col :span="6">
           <Select
-              v-model:value="state.searchFilters.type"
-              placeholder="用例类型"
-              allow-clear
-              style="width: 100%"
+            v-model:value="state.searchFilters.type"
+            placeholder="用例类型"
+            allow-clear
+            style="width: 100%"
           >
             <Select.Option value="">全部类型</Select.Option>
             <Select.Option value="http">HTTP/HTTPS</Select.Option>
@@ -138,15 +63,16 @@
         </Col>
         <Col :span="6">
           <Select
-              v-model:value="state.searchFilters.status"
-              placeholder="用例状态"
-              allow-clear
-              style="width: 100%"
+            v-model:value="state.searchFilters.status"
+            placeholder="用例状态"
+            allow-clear
+            style="width: 100%"
           >
             <Select.Option value="">全部状态</Select.Option>
+            <Select.Option value="draft">草稿</Select.Option>
             <Select.Option value="active">启用中</Select.Option>
             <Select.Option value="inactive">已停用</Select.Option>
-            <Select.Option value="deprecated">已废弃</Select.Option>
+            <Select.Option value="archived">已归档</Select.Option>
           </Select>
         </Col>
       </Row>
@@ -169,277 +95,173 @@
       </Row>
     </ACard>
 
-    <!-- 批量操作栏 -->
-    <ACard v-if="state.selectedTestCaseIds.length > 0" class="batch-actions-card">
+    <ACard v-if="state.selectedCaseIds.length > 0" class="batch-actions-card">
       <div class="batch-content">
         <Checkbox v-model:checked="state.isAllSelected" @change="toggleSelectAll">
-          全选
+          全选当前页
         </Checkbox>
 
         <div class="batch-buttons">
-          <Button @click="batchEnableTestCases">
+          <Button @click="batchUpdateStatus('active')">
             <template #icon><CheckCircleOutlined /></template>
-            启用
+            批量启用
           </Button>
-          <Button @click="batchDisableTestCases">
+          <Button @click="batchUpdateStatus('inactive')">
             <template #icon><StopOutlined /></template>
-            停用
+            批量停用
           </Button>
-          <Button @click="batchExportTestCases">
+          <Button @click="batchExportCases">
             <template #icon><DownloadOutlined /></template>
-            导出
+            批量导出
           </Button>
-          <Button danger @click="batchDeleteTestCases">
+          <Button danger @click="batchDeleteCases">
             <template #icon><DeleteOutlined /></template>
-            删除
+            批量删除
           </Button>
         </div>
 
         <div class="selected-count">
-          已选择 <span>{{ state.selectedTestCaseIds.length }}</span> 个用例
+          已选择 <span>{{ state.selectedCaseIds.length }}</span> 个用例
         </div>
       </div>
     </ACard>
 
-    <!-- 用例展示区域 -->
-    <div v-if="state.viewMode === 'card'">
-      <!-- 卡片视图 -->
-      <Row :gutter="[16, 16]" v-if="paginatedTestCases.length > 0">
-        <Col :span="8" v-for="testcase in paginatedTestCases" :key="testcase.id">
-          <ACard class="testcase-card" hoverable>
-            <template #title>
-              <div class="testcase-card-header">
-                <h3 class="testcase-name">{{ testcase.name }}</h3>
-                <div class="testcase-id">{{ testcase.id }}</div>
-              </div>
-            </template>
+    <ACard>
+      <Table
+        :columns="columns"
+        :data-source="state.testcases"
+        :pagination="false"
+        :loading="state.listLoading"
+        :row-selection="rowSelection"
+        row-key="id"
+        :scroll="{ x: 1300 }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'type'">
+            <Tag :color="typeMap[record.type]?.color || 'default'">
+              {{ typeMap[record.type]?.text || record.type }}
+            </Tag>
+          </template>
 
-            <template #extra>
-              <Tag :color="statusMap[testcase.status].color">
-                {{ statusMap[testcase.status].text }}
-              </Tag>
-            </template>
+          <template v-if="column.key === 'method'">
+            <Tag :color="methodMap[record.method || '']?.color || 'default'">
+              {{ record.method || '-' }}
+            </Tag>
+          </template>
 
-            <div class="testcase-meta">
-              <div class="meta-item">
-                <span class="meta-label">所属项目</span>
-                <div class="meta-value">{{ testcase.project }}</div>
-              </div>
+          <template v-if="column.key === 'url'">
+            <Tooltip :title="record.url || record.description || '-'" placement="topLeft">
+              <span class="ellipsis-text">
+                {{ truncateText(record.url || record.description || '-', 52) }}
+              </span>
+            </Tooltip>
+          </template>
 
-              <div class="meta-item">
-                <span class="meta-label">类型</span>
-                <div class="meta-value">
-                  <Tag :color="typeMap[testcase.type].color" size="small">
-                    {{ typeMap[testcase.type].text }}
-                  </Tag>
-                </div>
-              </div>
+          <template v-if="column.key === 'status'">
+            <Tag :color="statusMap[record.status]?.color || 'default'">
+              {{ statusMap[record.status]?.text || record.status }}
+            </Tag>
+          </template>
 
-              <div class="meta-item">
-                <span class="meta-label">请求方法</span>
-                <div class="meta-value">
-                  <Tag :color="methodMap[testcase.method]?.color || 'default'" size="small">
-                    {{ testcase.method }}
-                  </Tag>
-                </div>
-              </div>
-            </div>
+          <template v-if="column.key === 'created_at'">
+            {{ formatDateTime(record.created_at) }}
+          </template>
 
-            <div class="testcase-description">
-              {{ truncateText(testcase.description, 80) }}
-            </div>
-
-            <div class="testcase-url">
-              <span class="url-label">URL:</span>
-              <span class="url-value">{{ truncateText(testcase.url || '自定义脚本', 50) }}</span>
-            </div>
-
-            <div class="testcase-footer">
-              <div class="create-time">
-                <span class="time-label">创建时间:</span>
-                <span class="time-value">{{ testcase.createdAt.split(' ')[0] }}</span>
-              </div>
-              <div class="update-time">
-                <span class="time-label">最后更新:</span>
-                <span class="time-value">{{ testcase.updatedAt.split(' ')[0] }}</span>
-              </div>
-            </div>
-
-            <template #actions>
+          <template v-if="column.key === 'actions'">
+            <Space size="small">
               <Tooltip title="预览">
-                <Button type="link" @click="previewTestCase(testcase)">
-                  <template #icon><EyeOutlined /></template>
+                <Button type="link" size="small" @click="previewCase(record.id)">
+                  <EyeOutlined />
                 </Button>
               </Tooltip>
               <Tooltip title="编辑">
-                <Button type="link" @click="showEditModal(testcase.id)">
-                  <template #icon><EditOutlined /></template>
+                <Button type="link" size="small" @click="showEditModal(record.id)">
+                  <EditOutlined />
                 </Button>
               </Tooltip>
               <Tooltip title="复制">
-                <Button type="link" @click="copyTestCase(testcase)">
-                  <template #icon><CopyOutlined /></template>
+                <Button type="link" size="small" @click="copyCase(record.id)">
+                  <CopyOutlined />
                 </Button>
               </Tooltip>
               <Tooltip title="删除">
-                <Button type="link" danger @click="deleteTestCase(testcase.id)">
-                  <template #icon><DeleteOutlined /></template>
+                <Button type="link" size="small" danger @click="deleteCase(record.id)">
+                  <DeleteOutlined />
                 </Button>
               </Tooltip>
-            </template>
-          </ACard>
-        </Col>
-      </Row>
-
-      <!-- 卡片视图空状态 -->
-      <div v-if="paginatedTestCases.length === 0" class="empty-state">
-        <div class="empty-icon">
-          <ApiOutlined />
-        </div>
-        <h3>暂无用例数据</h3>
-        <p>当前没有找到符合筛选条件的用例，请尝试调整筛选条件或创建新的测试用例。</p>
-        <Button type="primary" @click="showAddModal">
-          <template #icon><PlusOutlined /></template>
-          新增用例
-        </Button>
-      </div>
-    </div>
-
-    <!-- 表格视图 -->
-    <div v-else>
-      <ACard>
-        <Table
-            :columns="columns"
-            :data-source="paginatedTestCases"
-            :pagination="false"
-            :row-key="record => record.id"
-            :row-selection="rowSelection"
-            :scroll="{ x: 1300 }"
-        >
-          <template #bodyCell="{ column, record }">
-            <!-- 用例类型 -->
-            <template v-if="column.key === 'type'">
-              <Tag :color="typeMap[record.type].color">
-                {{ typeMap[record.type].text }}
-              </Tag>
-            </template>
-
-            <!-- 请求方法 -->
-            <template v-if="column.key === 'method'">
-              <Tag :color="methodMap[record.method]?.color || 'default'">
-                {{ record.method }}
-              </Tag>
-            </template>
-
-            <!-- 请求URL/描述 -->
-            <template v-if="column.key === 'url'">
-              <Tooltip :title="record.url || record.description" placement="topLeft">
-                <span class="testcase-description">
-                  {{ truncateText(record.url || record.description, 50) }}
-                </span>
-              </Tooltip>
-            </template>
-
-            <!-- 状态 -->
-            <template v-if="column.key === 'status'">
-              <Tag :color="statusMap[record.status].color">
-                {{ statusMap[record.status].text }}
-              </Tag>
-            </template>
-
-            <!-- 操作 -->
-            <template v-if="column.key === 'actions'">
-              <Space size="small">
-                <Tooltip title="预览">
-                  <Button type="link" size="small" @click="previewTestCase(record)">
-                    <EyeOutlined />
-                  </Button>
-                </Tooltip>
-                <Tooltip title="编辑">
-                  <Button type="link" size="small" @click="showEditModal(record.id)">
-                    <EditOutlined />
-                  </Button>
-                </Tooltip>
-                <Tooltip title="复制">
-                  <Button type="link" size="small" @click="copyTestCase(record)">
-                    <CopyOutlined />
-                  </Button>
-                </Tooltip>
-                <Tooltip title="删除">
-                  <Button type="link" size="small" danger @click="deleteTestCase(record.id)">
-                    <DeleteOutlined />
-                  </Button>
-                </Tooltip>
-              </Space>
-            </template>
+            </Space>
           </template>
+        </template>
 
-          <template #emptyText>
-            <div class="empty-state">
-              <div class="empty-icon">
-                <ApiOutlined />
-              </div>
-              <h3>暂无用例数据</h3>
-              <p>当前没有找到符合筛选条件的用例，请尝试调整筛选条件或创建新的测试用例。</p>
-              <Button type="primary" @click="showAddModal">
-                <template #icon><PlusOutlined /></template>
-                新增用例
-              </Button>
+        <template #emptyText>
+          <div class="empty-state">
+            <div class="empty-icon">
+              <ApiOutlined />
             </div>
-          </template>
-        </Table>
-      </ACard>
-    </div>
+            <h3>暂无用例数据</h3>
+            <p>当前没有找到符合条件的用例，可以先新建一个用例开始联调。</p>
+          </div>
+        </template>
+      </Table>
+    </ACard>
 
-    <!-- 分页 -->
-    <div class="pagination-container" v-if="state.filteredTestCases.length > 0">
+    <div class="pagination-container" v-if="state.total > 0">
       <Pagination
-          v-model:current="state.currentPage"
-          v-model:pageSize="state.pageSize"
-          :total="state.filteredTestCases.length"
-          show-quick-jumper
-          show-size-changer
-          :show-total="(total: number) => `共 ${total} 条`"
+        v-model:current="state.currentPage"
+        v-model:pageSize="state.pageSize"
+        :total="state.total"
+        :page-size-options="['8', '16', '24', '48']"
+        show-quick-jumper
+        show-size-changer
+        @change="handlePageChange"
+        :show-total="(total: number) => `共 ${total} 条`"
       />
     </div>
 
-    <!-- 新增/编辑用例模态框 -->
     <Modal
-        v-model:visible="state.modalVisible"
-        :title="state.modalTitle"
-        width="800px"
-        :mask-closable="false"
-        @ok="handleModalOk"
-        @cancel="handleModalCancel"
+      v-model:open="state.modalVisible"
+      :title="state.modalTitle"
+      width="860px"
+      :mask-closable="false"
+      :confirm-loading="state.submitLoading"
+      @ok="handleModalOk"
+      @cancel="handleModalCancel"
     >
-      <Tabs v-model:activeKey="state.activeTab" @change="handleTabChange">
-        <TabPane key="basic" tab="基础信息">
+      <Tabs v-model:activeKey="state.activeTab">
+        <Tabs.TabPane key="basic" tab="基础信息">
           <Form layout="vertical">
             <Form.Item label="用例名称" required>
               <Input
-                  v-model:value="state.formData.name"
-                  placeholder="例如：用户登录接口"
+                v-model:value="state.formData.name"
+                placeholder="例如：用户登录接口"
               />
             </Form.Item>
 
             <Row :gutter="16">
               <Col :span="12">
                 <Form.Item label="所属项目" required>
-                  <Select v-model:value="state.formData.project" placeholder="请选择项目">
-                    <Select.Option value="电商平台">电商平台</Select.Option>
-                    <Select.Option value="API网关">API网关</Select.Option>
-                    <Select.Option value="用户中心">用户中心</Select.Option>
-                    <Select.Option value="支付系统">支付系统</Select.Option>
-                    <Select.Option value="搜索引擎">搜索引擎</Select.Option>
+                  <Select
+                    v-model:value="state.formData.project_id"
+                    placeholder="请选择项目"
+                    @change="handleProjectChange"
+                  >
+                    <Select.Option
+                      v-for="project in state.projectOptions"
+                      :key="project.id"
+                      :value="project.id"
+                    >
+                      {{ project.name }}
+                    </Select.Option>
                   </Select>
                 </Form.Item>
               </Col>
               <Col :span="12">
                 <Form.Item label="用例状态">
                   <Select v-model:value="state.formData.status">
+                    <Select.Option value="draft">草稿</Select.Option>
                     <Select.Option value="active">启用中</Select.Option>
                     <Select.Option value="inactive">已停用</Select.Option>
-                    <Select.Option value="deprecated">已废弃</Select.Option>
+                    <Select.Option value="archived">已归档</Select.Option>
                   </Select>
                 </Form.Item>
               </Col>
@@ -456,9 +278,12 @@
                   </Select>
                 </Form.Item>
               </Col>
-              <Col :span="12" v-if="state.formData.type === 'http'">
+              <Col :span="12">
                 <Form.Item label="请求方法">
-                  <Select v-model:value="state.formData.method">
+                  <Select
+                    v-model:value="state.formData.method"
+                    :disabled="state.formData.type === 'custom'"
+                  >
                     <Select.Option value="GET">GET</Select.Option>
                     <Select.Option value="POST">POST</Select.Option>
                     <Select.Option value="PUT">PUT</Select.Option>
@@ -473,120 +298,80 @@
 
             <Form.Item label="用例描述">
               <Input.TextArea
-                  v-model:value="state.formData.description"
-                  placeholder="描述此用例的测试目的、业务场景和注意事项..."
-                  :rows="3"
+                v-model:value="state.formData.description"
+                placeholder="描述此用例的测试目的、业务场景和注意事项"
+                :rows="3"
               />
             </Form.Item>
           </Form>
-        </TabPane>
+        </Tabs.TabPane>
 
-        <TabPane key="request" tab="请求配置" :disabled="state.formData.type === 'custom'">
-          <Form layout="vertical" v-if="state.formData.type !== 'custom'">
-            <Form.Item label="请求URL" :required="state.formData.type === 'http'">
+        <Tabs.TabPane key="request" tab="请求配置">
+          <Form layout="vertical">
+            <Form.Item label="请求URL" :required="state.formData.type !== 'custom'">
               <Input
-                  v-model:value="state.formData.url"
-                  placeholder="例如：https://api.example.com/v1/login"
-              />
-            </Form.Item>
-
-            <Form.Item label="请求参数">
-              <Input.TextArea
-                  v-model:value="state.formData.params"
-                  placeholder='// JSON 格式
-{
-  "username": "test_user",
-  "password": "password123"
-}
-
-// 或 Form 格式
-username=test_user&password=password123'
-                  :rows="5"
-                  class="code-textarea"
+                v-model:value="state.formData.url"
+                :disabled="state.formData.type === 'custom'"
+                placeholder="例如：https://api.example.com/v1/login"
               />
             </Form.Item>
 
             <Form.Item label="请求体 (Body)">
               <Input.TextArea
-                  v-model:value="state.formData.body"
-                  placeholder='// JSON 示例
-{
-  "username": "test_user",
-  "password": "password123",
-  "remember": true
-}'
-                  :rows="5"
-                  class="code-textarea"
+                v-model:value="state.formData.body"
+                :rows="6"
+                class="code-textarea"
+                placeholder='例如：{"username":"demo","password":"123456"}'
               />
             </Form.Item>
           </Form>
-          <div v-else style="text-align: center; padding: 40px; color: #999;">
-            <ApiOutlined style="font-size: 48px; margin-bottom: 16px;" />
-            <p>自定义脚本类型无需配置请求信息</p>
-          </div>
-        </TabPane>
+        </Tabs.TabPane>
 
-        <TabPane key="headers" tab="请求头" :disabled="state.formData.type === 'custom'">
-          <Form layout="vertical" v-if="state.formData.type !== 'custom'">
-            <Table
-                :columns="headerColumns"
-                :data-source="state.formData.headers"
-                :pagination="false"
-                size="small"
-            >
-              <template #bodyCell="{ column, index }">
-                <template v-if="column.key === 'name'">
-                  <Input
-                      v-model:value="state.formData.headers[index].name"
-                      placeholder="Header名称"
-                      size="small"
-                  />
-                </template>
-                <template v-if="column.key === 'value'">
-                  <Input
-                      v-model:value="state.formData.headers[index].value"
-                      placeholder="Header值"
-                      size="small"
-                  />
-                </template>
-                <template v-if="column.key === 'action'">
-                  <Button type="link" danger size="small" @click="removeHeader(index)">
-                    <DeleteOutlined />
-                  </Button>
-                </template>
+        <Tabs.TabPane key="headers" tab="请求头">
+          <Table
+            :columns="headerColumns"
+            :data-source="state.formData.headers"
+            :pagination="false"
+            size="small"
+            row-key="row_key"
+          >
+            <template #bodyCell="{ column, index }">
+              <template v-if="column.key === 'name'">
+                <Input
+                  v-model:value="state.formData.headers[index].name"
+                  placeholder="Header名称"
+                  size="small"
+                />
               </template>
-            </Table>
-            <Button type="dashed" @click="addHeader" style="width: 100%; margin-top: 16px;">
-              <PlusOutlined />
-              添加请求头
-            </Button>
-          </Form>
-          <div v-else style="text-align: center; padding: 40px; color: #999;">
-            <ApiOutlined style="font-size: 48px; margin-bottom: 16px;" />
-            <p>自定义脚本类型无需配置请求头</p>
-          </div>
-        </TabPane>
+              <template v-if="column.key === 'value'">
+                <Input
+                  v-model:value="state.formData.headers[index].value"
+                  placeholder="Header值"
+                  size="small"
+                />
+              </template>
+              <template v-if="column.key === 'action'">
+                <Button type="link" danger size="small" @click="removeHeader(index)">
+                  <DeleteOutlined />
+                </Button>
+              </template>
+            </template>
+          </Table>
 
-        <TabPane key="advanced" tab="高级设置">
+          <Button type="dashed" @click="addHeader" class="header-add-button">
+            <PlusOutlined />
+            添加请求头
+          </Button>
+        </Tabs.TabPane>
+
+        <Tabs.TabPane key="advanced" tab="高级设置">
           <Form layout="vertical">
             <Form.Item label="断言脚本">
               <Input.TextArea
-                  v-model:value="state.formData.assertion"
-                  placeholder='// JavaScript 断言脚本
-// response 为响应对象，包含 status、headers、body 等属性
-
-// 示例：检查响应状态码
-if (response.status !== 200) {
-    throw new Error(`Expected status 200, got ${response.status}`);
-}
-
-// 示例：检查响应体包含特定字段
-const data = JSON.parse(response.body);
-if (!data.success) {
-    throw new Error("Request failed: " + data.message);
-}'
-                  :rows="6"
-                  class="code-textarea"
+                v-model:value="state.formData.assertion"
+                :rows="6"
+                class="code-textarea"
+                placeholder="// 在这里编写断言逻辑"
               />
             </Form.Item>
 
@@ -594,136 +379,311 @@ if (!data.success) {
               <Col :span="12">
                 <Form.Item label="期望状态码">
                   <Input
-                      v-model:value="state.formData.expectedStatus"
-                      placeholder="例如：200, 201"
+                    v-model:value="state.formData.expected_status"
+                    placeholder="例如：200"
                   />
                 </Form.Item>
               </Col>
               <Col :span="12">
                 <Form.Item label="期望响应时间 (ms)">
                   <Input
-                      v-model:value="state.formData.expectedResponseTime"
-                      type="number"
-                      placeholder="例如：1000"
+                    v-model:value="state.formData.expected_response_time"
+                    type="number"
+                    placeholder="例如：1000"
                   />
                 </Form.Item>
               </Col>
             </Row>
 
-            <Form.Item label="预置脚本 (Pre-request Script)">
+            <Form.Item label="前置脚本">
               <Input.TextArea
-                  v-model:value="state.formData.preRequestScript"
-                  placeholder='// 请求前执行的脚本，用于生成动态参数
-// 例如：生成时间戳、签名等
+                v-model:value="state.formData.pre_request_script"
+                :rows="5"
+                class="code-textarea"
+                placeholder="// 请求发送前执行的脚本"
+              />
+            </Form.Item>
 
-// 生成当前时间戳
-const timestamp = Date.now();
-
-// 生成随机字符串
-function randomString(length) {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let result = "";
-    for (let i = 0; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-}
-
-// 设置动态参数
-const nonce = randomString(8);'
-                  :rows="5"
-                  class="code-textarea"
+            <Form.Item label="后置脚本">
+              <Input.TextArea
+                v-model:value="state.formData.post_request_script"
+                :rows="5"
+                class="code-textarea"
+                placeholder="// 请求结束后执行的脚本"
               />
             </Form.Item>
           </Form>
-        </TabPane>
+        </Tabs.TabPane>
       </Tabs>
     </Modal>
 
-    <!-- 预览模态框 -->
     <Modal
-        v-model:visible="state.previewVisible"
-        title="用例详情预览"
-        width="800px"
-        :footer="null"
+      v-model:open="state.importModalVisible"
+      title="导入用例"
+      width="1080px"
+      :mask-closable="false"
+      :confirm-loading="state.importSubmitLoading"
+      @cancel="handleImportModalCancel"
     >
-      <Tabs v-model:activeKey="state.previewTab">
-        <TabPane key="info" tab="基本信息">
+      <div class="import-layout">
+        <ACard title="导入配置" size="small" class="import-config-card">
+          <Form layout="vertical">
+            <Row :gutter="16">
+              <Col :span="12">
+                <Form.Item label="所属项目" required>
+                  <Select
+                    v-model:value="state.importForm.project_id"
+                    placeholder="请选择要导入到的项目"
+                    show-search
+                    option-filter-prop="label"
+                  >
+                    <Select.Option
+                      v-for="project in state.projectOptions"
+                      :key="project.id"
+                      :value="project.id"
+                      :label="project.name"
+                    >
+                      {{ project.name }}
+                    </Select.Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col :span="12">
+                <Form.Item label="导入来源" required>
+                  <Select v-model:value="state.importForm.source_type">
+                    <Select.Option value="openapi_url">OpenAPI URL</Select.Option>
+                    <Select.Option value="openapi_json">OpenAPI JSON 内容</Select.Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Form.Item
+              v-if="state.importForm.source_type === 'openapi_url'"
+              label="文档地址"
+              required
+            >
+              <Input
+                v-model:value="state.importForm.source_url"
+                placeholder="例如：https://api.example.com/openapi.json"
+              />
+            </Form.Item>
+
+            <Form.Item v-else label="文档内容" required>
+              <Input.TextArea
+                v-model:value="state.importForm.document_content"
+                :rows="8"
+                class="code-textarea"
+                placeholder="请粘贴 OpenAPI / Swagger JSON 内容"
+              />
+              <div class="import-json-actions">
+                <input
+                  ref="importFileInputRef"
+                  type="file"
+                  accept=".json,application/json"
+                  class="import-file-input"
+                  @change="handleImportFileChange"
+                />
+                <Button @click="triggerImportFileSelect">
+                  <template #icon><UploadOutlined /></template>
+                  从文件读取 JSON
+                </Button>
+              </div>
+            </Form.Item>
+
+            <Row :gutter="16">
+              <Col :span="12">
+                <Form.Item label="冲突处理">
+                  <Select v-model:value="state.importForm.conflict_policy">
+                    <Select.Option value="skip">跳过已存在用例</Select.Option>
+                    <Select.Option value="overwrite">覆盖已存在用例</Select.Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col :span="12">
+                <Form.Item label="默认状态">
+                  <Select v-model:value="state.importForm.default_status">
+                    <Select.Option value="draft">草稿</Select.Option>
+                    <Select.Option value="active">启用中</Select.Option>
+                    <Select.Option value="inactive">已停用</Select.Option>
+                    <Select.Option value="archived">已归档</Select.Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        </ACard>
+
+        <ACard title="导入预览" size="small" class="import-preview-card">
+          <template #extra>
+            <Space size="middle">
+              <span v-if="state.importPreviewMeta" class="import-summary">
+                共 {{ state.importPreviewMeta.total_count }} 个接口，
+                重复 {{ state.importPreviewMeta.duplicate_count }} 个
+              </span>
+              <Button :loading="state.importPreviewLoading" @click="previewImportCases">
+                <template #icon><CloudDownloadOutlined /></template>
+                解析预览
+              </Button>
+            </Space>
+          </template>
+
+          <div v-if="state.importPreviewMeta" class="import-preview-meta">
+            <Tag color="blue">项目：{{ state.importPreviewMeta.project_name }}</Tag>
+            <Tag color="processing">可导入：{{ state.importPreviewMeta.importable_count }}</Tag>
+            <Tag color="warning">重复：{{ state.importPreviewMeta.duplicate_count }}</Tag>
+          </div>
+
+          <Table
+            :columns="importColumns"
+            :data-source="state.importPreviewItems"
+            :pagination="false"
+            :loading="state.importPreviewLoading"
+            :row-selection="importRowSelection"
+            :scroll="{ x: 940, y: 360 }"
+            row-key="import_key"
+            size="small"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'method'">
+                <Tag :color="methodMap[record.method || '']?.color || 'default'">
+                  {{ record.method }}
+                </Tag>
+              </template>
+
+              <template v-if="column.key === 'url'">
+                <Tooltip :title="record.url" placement="topLeft">
+                  <span class="ellipsis-text">{{ truncateText(record.url, 56) }}</span>
+                </Tooltip>
+              </template>
+
+              <template v-if="column.key === 'tags'">
+                <Space size="small" wrap>
+                  <Tag v-for="tag in record.tags" :key="tag">{{ tag }}</Tag>
+                  <span v-if="record.tags.length === 0">-</span>
+                </Space>
+              </template>
+
+              <template v-if="column.key === 'exists'">
+                <Tag :color="record.exists ? 'warning' : 'success'">
+                  {{ record.exists ? '已存在' : '新用例' }}
+                </Tag>
+                <div v-if="record.duplicate_case_name" class="import-duplicate-text">
+                  {{ record.duplicate_case_name }}
+                </div>
+              </template>
+            </template>
+
+            <template #emptyText>
+              <div class="empty-state compact-empty">
+                <div class="empty-icon">
+                  <CloudDownloadOutlined />
+                </div>
+                <h3>还没有导入预览结果</h3>
+                <p>先选择项目和文档来源，然后点击“解析预览”。</p>
+              </div>
+            </template>
+          </Table>
+        </ACard>
+      </div>
+
+      <template #footer>
+        <Space>
+          <Button @click="handleImportModalCancel">取消</Button>
+          <Button :loading="state.importPreviewLoading" @click="previewImportCases">
+            重新预览
+          </Button>
+          <Button
+            type="primary"
+            :loading="state.importSubmitLoading"
+            @click="commitImportCases"
+          >
+            导入选中用例
+          </Button>
+        </Space>
+      </template>
+    </Modal>
+
+    <Modal
+      v-model:open="state.previewVisible"
+      title="用例详情预览"
+      width="860px"
+      :footer="null"
+    >
+      <div v-if="state.previewLoading" class="preview-loading">
+        <a-spin tip="正在加载用例详情..." />
+      </div>
+
+      <Tabs v-else v-model:activeKey="state.previewTab">
+        <Tabs.TabPane key="info" tab="基本信息">
           <Descriptions :column="2" bordered>
-            <DescriptionsItem label="用例ID">{{ state.previewData.id }}</DescriptionsItem>
-            <DescriptionsItem label="用例名称">{{ state.previewData.name }}</DescriptionsItem>
-            <DescriptionsItem label="所属项目">{{ state.previewData.project }}</DescriptionsItem>
+            <DescriptionsItem label="用例ID">{{ state.previewData?.id || '-' }}</DescriptionsItem>
+            <DescriptionsItem label="用例名称">{{ state.previewData?.name || '-' }}</DescriptionsItem>
+            <DescriptionsItem label="所属项目">{{ state.previewData?.project || '-' }}</DescriptionsItem>
             <DescriptionsItem label="用例类型">
-              <Tag :color="typeMap[state.previewData.type].color">
-                {{ typeMap[state.previewData.type].text }}
+              <Tag :color="typeMap[state.previewData?.type || '']?.color || 'default'">
+                {{ typeMap[state.previewData?.type || '']?.text || state.previewData?.type || '-' }}
               </Tag>
             </DescriptionsItem>
             <DescriptionsItem label="请求方法">
-              <Tag :color="methodMap[state.previewData.method]?.color || 'default'">
-                {{ state.previewData.method }}
+              <Tag :color="methodMap[state.previewData?.method || '']?.color || 'default'">
+                {{ state.previewData?.method || '-' }}
               </Tag>
             </DescriptionsItem>
             <DescriptionsItem label="用例状态">
-              <Tag :color="statusMap[state.previewData.status].color">
-                {{ statusMap[state.previewData.status].text }}
+              <Tag :color="statusMap[state.previewData?.status || '']?.color || 'default'">
+                {{ statusMap[state.previewData?.status || '']?.text || state.previewData?.status || '-' }}
               </Tag>
             </DescriptionsItem>
-            <DescriptionsItem label="创建时间">{{ state.previewData.createdAt }}</DescriptionsItem>
-            <DescriptionsItem label="最后更新">{{ state.previewData.updatedAt }}</DescriptionsItem>
+            <DescriptionsItem label="创建时间">{{ formatDateTime(state.previewData?.created_at) }}</DescriptionsItem>
+            <DescriptionsItem label="最后更新">{{ formatDateTime(state.previewData?.updated_at) }}</DescriptionsItem>
             <DescriptionsItem label="用例描述" :span="2">
-              {{ state.previewData.description }}
+              {{ state.previewData?.description || '-' }}
             </DescriptionsItem>
           </Descriptions>
-        </TabPane>
+        </Tabs.TabPane>
 
-        <TabPane key="request" tab="请求详情">
-          <div style="margin-bottom: 16px">
-            <div style="font-weight: 500; margin-bottom: 8px; color: rgba(0, 0, 0, 0.85);">
-              请求URL
-            </div>
-            <pre class="preview-code">{{ state.previewData.url || '自定义脚本' }}</pre>
+        <Tabs.TabPane key="request" tab="请求详情">
+          <div class="preview-section">
+            <div class="preview-section-title">请求URL</div>
+            <pre class="preview-code">{{ state.previewData?.url || '自定义脚本' }}</pre>
           </div>
 
-          <div style="margin-bottom: 16px">
-            <div style="font-weight: 500; margin-bottom: 8px; color: rgba(0, 0, 0, 0.85);">
-              请求头
-            </div>
-            <pre class="preview-code" v-if="state.previewData.headers && state.previewData.headers.length > 0">
-              {{ formatHeaders(state.previewData.headers) }}
-            </pre>
-            <div v-else style="color: #999; padding: 8px;">无</div>
+          <div class="preview-section">
+            <div class="preview-section-title">请求头</div>
+            <pre class="preview-code">{{ formatHeaders(state.previewData?.headers || []) }}</pre>
           </div>
 
-          <div>
-            <div style="font-weight: 500; margin-bottom: 8px; color: rgba(0, 0, 0, 0.85);">
-              请求体
-            </div>
-            <pre class="preview-code">{{ state.previewData.body || '无' }}</pre>
+          <div class="preview-section">
+            <div class="preview-section-title">请求体</div>
+            <pre class="preview-code">{{ state.previewData?.body || '无' }}</pre>
           </div>
-        </TabPane>
+        </Tabs.TabPane>
 
-        <TabPane key="script" tab="脚本代码">
-          <div style="margin-bottom: 16px">
-            <div style="font-weight: 500; margin-bottom: 8px; color: rgba(0, 0, 0, 0.85);">
-              断言脚本
-            </div>
-            <pre class="preview-code">{{ state.previewData.assertion || '无' }}</pre>
+        <Tabs.TabPane key="script" tab="脚本代码">
+          <div class="preview-section">
+            <div class="preview-section-title">断言脚本</div>
+            <pre class="preview-code">{{ state.previewData?.assertion || '无' }}</pre>
           </div>
 
-          <div>
-            <div style="font-weight: 500; margin-bottom: 8px; color: rgba(0, 0, 0, 0.85);">
-              预置脚本
-            </div>
-            <pre class="preview-code">{{ state.previewData.preRequestScript || '无' }}</pre>
+          <div class="preview-section">
+            <div class="preview-section-title">前置脚本</div>
+            <pre class="preview-code">{{ state.previewData?.pre_request_script || '无' }}</pre>
           </div>
-        </TabPane>
+
+          <div class="preview-section">
+            <div class="preview-section-title">后置脚本</div>
+            <pre class="preview-code">{{ state.previewData?.post_request_script || '无' }}</pre>
+          </div>
+        </Tabs.TabPane>
       </Tabs>
     </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, h } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import dayjs from 'dayjs'
 import {
   Card as ACard,
   Row,
@@ -733,7 +693,6 @@ import {
   Select,
   Table,
   Tag,
-  Statistic,
   Modal,
   Form,
   Checkbox,
@@ -744,7 +703,7 @@ import {
   DescriptionsItem,
   Tooltip,
   Tabs,
-  message
+  message,
 } from 'ant-design-vue'
 import {
   PlusOutlined,
@@ -754,143 +713,171 @@ import {
   EditOutlined,
   DeleteOutlined,
   CopyOutlined,
-  AppstoreOutlined,
-  UnorderedListOutlined,
-  ProjectOutlined,
-  PlayCircleOutlined,
   ApiOutlined,
-  ScheduleOutlined,
   FilterOutlined,
   CheckCircleOutlined,
   StopOutlined,
-  DownloadOutlined
+  DownloadOutlined,
+  ImportOutlined,
+  UploadOutlined,
+  CloudDownloadOutlined,
 } from '@ant-design/icons-vue'
+import { CaseApi } from '@/api/case'
+import { ProjectApi } from '@/api/project'
+import type {
+  CaseHeaderItem,
+  CaseImportItem,
+  CaseImportPreviewData,
+  CaseImportSourceType,
+  CaseInfo,
+} from '@/types/case'
+import type { ProjectInfo } from '@/types/project'
 
-const TabPane = Tabs.TabPane
+type CaseFormState = {
+  name: string
+  project_id: number | undefined
+  project: string
+  type: string
+  status: string
+  description: string
+  method: string
+  url: string
+  headers: Array<CaseHeaderItem & { row_key: string }>
+  body: string
+  assertion: string
+  expected_status: string
+  expected_response_time: number | null
+  pre_request_script: string
+  post_request_script: string
+}
 
-// 模拟用例数据
-const mockTestCases = [
-  {
-    id: "TC-001",
-    name: "用户登录接口",
-    project: "用户中心",
-    type: "http",
-    method: "POST",
-    url: "https://api.example.com/v1/login",
-    description: "用户登录接口测试，验证用户名密码认证流程，包含token生成和返回。",
-    status: "active",
-    headers: [
-      { name: "Content-Type", value: "application/json" },
-      { name: "User-Agent", value: "PerfLocust/1.0" }
-    ],
-    body: '{"username": "test_user", "password": "password123"}',
-    assertion: 'if (response.status !== 200) { throw new Error("登录失败"); }',
-    preRequestScript: 'const timestamp = Date.now();',
-    expectedStatus: "200",
-    expectedResponseTime: 1000,
-    createdAt: "2024-01-20 10:30:00",
-    updatedAt: "2024-01-20 14:15:00"
-  },
-  // ... 添加更多测试用例数据
+type CaseImportFormState = {
+  project_id: number | undefined
+  source_type: CaseImportSourceType
+  source_url: string
+  document_content: string
+  conflict_policy: 'skip' | 'overwrite'
+  default_status: string
+}
+
+type ImportPreviewItem = CaseImportItem & {
+  import_key: string
+}
+
+const createDefaultHeaders = () => [
+  { row_key: crypto.randomUUID(), name: 'User-Agent', value: 'PerfLocust/1.0' },
+  { row_key: crypto.randomUUID(), name: 'Content-Type', value: 'application/json' },
 ]
 
-// 响应式数据
+const createDefaultFormData = (): CaseFormState => ({
+  name: '',
+  project_id: undefined,
+  project: '',
+  type: 'http',
+  status: 'draft',
+  description: '',
+  method: 'POST',
+  url: '',
+  headers: createDefaultHeaders(),
+  body: '',
+  assertion: '',
+  expected_status: '',
+  expected_response_time: null,
+  pre_request_script: '',
+  post_request_script: '',
+})
+
+const createDefaultImportFormData = (): CaseImportFormState => ({
+  project_id: undefined,
+  source_type: 'openapi_url',
+  source_url: '',
+  document_content: '',
+  conflict_policy: 'skip',
+  default_status: 'draft',
+})
+
+const normalizeHeaders = (headers: CaseInfo['headers']): Array<CaseHeaderItem & { row_key: string }> => {
+  if (!Array.isArray(headers)) {
+    return []
+  }
+
+  return headers.map(item => ({
+    row_key: crypto.randomUUID(),
+    name: item.name || '',
+    value: item.value || '',
+  }))
+}
+
+const normalizeCase = (testcase: CaseInfo): CaseInfo => ({
+  ...testcase,
+  status: testcase.status?.toLowerCase() || 'draft',
+  headers: Array.isArray(testcase.headers) ? testcase.headers : [],
+})
+
 const state = reactive({
-  testcases: [...mockTestCases],
-  filteredTestCases: [...mockTestCases],
+  testcases: [] as CaseInfo[],
+  projectOptions: [] as ProjectInfo[],
   currentPage: 1,
   pageSize: 8,
-  viewMode: 'table', // 'card' 或 'table'
+  total: 0,
+  listLoading: false,
+  submitLoading: false,
   searchFilters: {
     name: '',
-    project: '',
+    project_id: undefined as number | undefined,
     type: '',
-    status: ''
+    status: '',
   },
-  selectedTestCaseIds: [] as string[],
+  selectedCaseIds: [] as number[],
   isAllSelected: false,
   modalVisible: false,
   modalTitle: '创建新用例',
   isEditing: false,
-  currentEditId: null as string | null,
+  currentEditId: null as number | null,
   activeTab: 'basic',
   previewVisible: false,
+  previewLoading: false,
   previewTab: 'info',
-  formData: {
-    id: '',
-    name: '',
-    project: '',
-    type: 'http',
-    status: 'active',
-    description: '',
-    method: 'POST',
-    url: '',
-    params: '',
-    body: '',
-    headers: [
-      { name: 'User-Agent', value: 'PerfLocust/1.0' },
-      { name: 'Content-Type', value: 'application/json' }
-    ] as Array<{ name: string, value: string }>,
-    assertion: '',
-    expectedStatus: '',
-    expectedResponseTime: null as number | null,
-    preRequestScript: ''
-  },
-  previewData: {
-    id: '',
-    name: '',
-    project: '',
-    type: '',
-    method: '',
-    status: '',
-    description: '',
-    url: '',
-    headers: [] as Array<{ name: string, value: string }>,
-    body: '',
-    assertion: '',
-    preRequestScript: '',
-    createdAt: '',
-    updatedAt: ''
-  }
+  previewData: null as CaseInfo | null,
+  formData: createDefaultFormData(),
+  importModalVisible: false,
+  importPreviewLoading: false,
+  importSubmitLoading: false,
+  importPreviewItems: [] as ImportPreviewItem[],
+  importPreviewMeta: null as CaseImportPreviewData | null,
+  selectedImportKeys: [] as string[],
+  importForm: createDefaultImportFormData(),
 })
 
-// 计算属性
-const statistics = computed(() => {
-  const total = state.testcases.length
-  const active = state.testcases.filter(t => t.status === 'active').length
-  const httpCount = state.testcases.filter(t => t.type === 'http').length
-  const projects = new Set(state.testcases.map(t => t.project)).size
-  const uniqueProjects = projects
-
-  return { total, active, httpCount, projects, uniqueProjects }
-})
-
-const paginatedTestCases = computed(() => {
-  const start = (state.currentPage - 1) * state.pageSize
-  const end = start + state.pageSize
-  return state.filteredTestCases.slice(start, end)
-})
+const importFileInputRef = ref<HTMLInputElement | null>(null)
 
 const rowSelection = computed(() => ({
-  selectedRowKeys: state.selectedTestCaseIds,
-  onChange: (selectedRowKeys: string[]) => {
-    state.selectedTestCaseIds = selectedRowKeys
-    state.isAllSelected = selectedRowKeys.length === paginatedTestCases.value.length && paginatedTestCases.value.length > 0
-  }
+  selectedRowKeys: state.selectedCaseIds,
+  onChange: (selectedRowKeys: number[]) => {
+    state.selectedCaseIds = selectedRowKeys
+    state.isAllSelected = selectedRowKeys.length > 0 && selectedRowKeys.length === state.testcases.length
+  },
 }))
 
-// 映射表
-const statusMap = {
+const importRowSelection = computed(() => ({
+  selectedRowKeys: state.selectedImportKeys,
+  onChange: (selectedRowKeys: string[]) => {
+    state.selectedImportKeys = selectedRowKeys
+  },
+}))
+
+const statusMap: Record<string, { text: string; color: string }> = {
+  draft: { text: '草稿', color: 'default' },
   active: { text: '启用中', color: 'green' },
-  inactive: { text: '已停用', color: 'gray' },
-  deprecated: { text: '已废弃', color: 'orange' }
+  inactive: { text: '已停用', color: 'orange' },
+  archived: { text: '已归档', color: 'purple' },
 }
 
-const typeMap = {
+const typeMap: Record<string, { text: string; color: string }> = {
   http: { text: 'HTTP', color: 'blue' },
   websocket: { text: 'WebSocket', color: 'purple' },
   grpc: { text: 'gRPC', color: 'orange' },
-  custom: { text: '自定义', color: 'cyan' }
+  custom: { text: '自定义', color: 'cyan' },
 }
 
 const methodMap: Record<string, { color: string }> = {
@@ -900,136 +887,244 @@ const methodMap: Record<string, { color: string }> = {
   DELETE: { color: 'red' },
   PATCH: { color: 'purple' },
   HEAD: { color: 'cyan' },
-  OPTIONS: { color: 'geekblue' }
+  OPTIONS: { color: 'geekblue' },
 }
 
-// 表格列定义
 const columns = [
   {
     title: '用例ID',
     dataIndex: 'id',
     key: 'id',
-    width: 100
+    width: 110,
   },
   {
     title: '用例名称',
     dataIndex: 'name',
     key: 'name',
     width: 180,
-    customRender: ({ text }: { text: string }) => {
-      return h('div', { style: { fontWeight: 'bold' } }, text)
-    }
   },
   {
     title: '所属项目',
     dataIndex: 'project',
     key: 'project',
-    width: 120
+    width: 140,
   },
   {
     title: '类型',
     key: 'type',
-    width: 100
+    width: 100,
   },
   {
     title: '方法',
     key: 'method',
-    width: 80
+    width: 100,
   },
   {
     title: '请求URL/描述',
     key: 'url',
-    width: 200
+    width: 240,
   },
   {
     title: '状态',
     key: 'status',
-    width: 100
+    width: 110,
   },
   {
     title: '创建时间',
-    dataIndex: 'createdAt',
-    key: 'createdAt',
-    width: 140,
-    customRender: ({ text }: { text: string }) => text.split(' ')[0]
+    key: 'created_at',
+    width: 180,
   },
   {
     title: '操作',
     key: 'actions',
     width: 180,
-    fixed: 'right'
-  }
+    fixed: 'right',
+  },
 ]
 
-// 请求头表格列
 const headerColumns = [
   {
     title: 'Header 名称',
     key: 'name',
-    width: '40%'
+    width: '40%',
   },
   {
     title: 'Header 值',
     key: 'value',
-    width: '50%'
+    width: '50%',
   },
   {
     title: '操作',
     key: 'action',
-    width: '10%'
-  }
+    width: '10%',
+  },
 ]
 
-// 方法
-const applyFilters = () => {
-  const { name, project, type, status } = state.searchFilters
+const importColumns = [
+  {
+    title: '接口名称',
+    dataIndex: 'name',
+    key: 'name',
+    width: 220,
+  },
+  {
+    title: '方法',
+    key: 'method',
+    width: 100,
+  },
+  {
+    title: '请求路径',
+    key: 'url',
+    width: 280,
+  },
+  {
+    title: '标签',
+    key: 'tags',
+    width: 180,
+  },
+  {
+    title: '导入状态',
+    key: 'exists',
+    width: 140,
+  },
+]
 
-  state.filteredTestCases = state.testcases.filter(testcase => {
-    // 名称/描述筛选
-    if (name &&
-        !testcase.name.toLowerCase().includes(name.toLowerCase()) &&
-        !testcase.description.toLowerCase().includes(name.toLowerCase())) {
-      return false
-    }
-
-    // 项目筛选
-    if (project && testcase.project !== project) {
-      return false
-    }
-
-    // 类型筛选
-    if (type && testcase.type !== type) {
-      return false
-    }
-
-    // 状态筛选
-    if (status && testcase.status !== status) {
-      return false
-    }
-
-    return true
-  })
-
-  state.currentPage = 1
-  state.selectedTestCaseIds = []
-  state.isAllSelected = false
+const formatDateTime = (value?: string | null) => {
+  if (!value || !dayjs(value).isValid()) {
+    return '-'
+  }
+  return dayjs(value).format('YYYY-MM-DD HH:mm:ss')
 }
 
-const resetFilters = () => {
+const truncateText = (text: string, maxLength: number) => {
+  if (!text) {
+    return ''
+  }
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
+}
+
+const formatHeaders = (headers: CaseInfo['headers']) => {
+  if (!headers || headers.length === 0) {
+    return '无'
+  }
+  return headers.map(item => `${item.name}: ${item.value}`).join('\n')
+}
+
+const getImportItemKey = (item: Pick<CaseImportItem, 'method' | 'url' | 'name'>) => {
+  return `${item.method}::${item.url}::${item.name}`
+}
+
+const normalizeImportPreviewData = (data: CaseImportPreviewData) => ({
+  ...data,
+  results: data.results.map(item => ({
+    ...item,
+    tags: Array.isArray(item.tags) ? item.tags : [],
+    headers: Array.isArray(item.headers) ? item.headers : [],
+    import_key: getImportItemKey(item),
+  })),
+})
+
+const syncSelectState = () => {
+  state.isAllSelected = state.testcases.length > 0 && state.selectedCaseIds.length === state.testcases.length
+}
+
+const fetchProjectOptions = async () => {
+  try {
+    const response = await ProjectApi.getProjectList({
+      page: 1,
+      page_size: 200,
+    })
+    state.projectOptions = response.data.results
+  } catch (error) {
+    console.error('获取项目列表失败:', error)
+    message.error('项目选项加载失败，请稍后重试')
+  }
+}
+
+const fetchCaseList = async () => {
+  state.listLoading = true
+  try {
+    const response = await CaseApi.getCaseList({
+      page: state.currentPage,
+      page_size: state.pageSize,
+      name: state.searchFilters.name || undefined,
+      project_id: state.searchFilters.project_id,
+      type: state.searchFilters.type || undefined,
+      status: state.searchFilters.status || undefined,
+    })
+
+    state.testcases = response.data.results.map(normalizeCase)
+    state.total = response.data.total
+    state.selectedCaseIds = state.selectedCaseIds.filter(id =>
+      state.testcases.some(item => item.id === id)
+    )
+    syncSelectState()
+  } catch (error) {
+    console.error('获取用例列表失败:', error)
+    message.error('用例列表加载失败，请稍后重试')
+  } finally {
+    state.listLoading = false
+  }
+}
+
+const getSelectedProject = (projectId?: number) => {
+  return state.projectOptions.find(item => item.id === projectId)
+}
+
+const loadCaseDetail = async (caseId: number) => {
+  const response = await CaseApi.getCaseInfo({ id: caseId })
+  return normalizeCase(response.data)
+}
+
+const applyFilters = async () => {
+  state.currentPage = 1
+  await fetchCaseList()
+}
+
+const resetFilters = async () => {
   state.searchFilters = {
     name: '',
-    project: '',
+    project_id: undefined,
     type: '',
-    status: ''
+    status: '',
   }
-  state.filteredTestCases = [...state.testcases]
   state.currentPage = 1
-  state.selectedTestCaseIds = []
+  state.selectedCaseIds = []
   state.isAllSelected = false
+  await fetchCaseList()
 }
 
-const switchView = (mode: string) => {
-  state.viewMode = mode
+const handlePageChange = async (page: number, pageSize: number) => {
+  state.currentPage = page
+  state.pageSize = pageSize
+  await fetchCaseList()
+}
+
+const handleProjectChange = (projectId: number) => {
+  const project = getSelectedProject(projectId)
+  state.formData.project_id = project?.id
+  state.formData.project = project?.name || ''
+}
+
+const handleTypeChange = (value: string) => {
+  if (value === 'custom') {
+    state.formData.method = 'POST'
+    state.formData.url = ''
+  } else if (!state.formData.method) {
+    state.formData.method = 'POST'
+  }
+}
+
+const addHeader = () => {
+  state.formData.headers.push({
+    row_key: crypto.randomUUID(),
+    name: '',
+    value: '',
+  })
+}
+
+const removeHeader = (index: number) => {
+  state.formData.headers.splice(index, 1)
 }
 
 const showAddModal = () => {
@@ -1037,299 +1132,417 @@ const showAddModal = () => {
   state.isEditing = false
   state.currentEditId = null
   state.activeTab = 'basic'
-  state.formData = {
-    id: '',
-    name: '',
-    project: '',
-    type: 'http',
-    status: 'active',
-    description: '',
-    method: 'POST',
-    url: '',
-    params: '',
-    body: '',
-    headers: [
-      { name: 'User-Agent', value: 'PerfLocust/1.0' },
-      { name: 'Content-Type', value: 'application/json' }
-    ],
-    assertion: '',
-    expectedStatus: '',
-    expectedResponseTime: null,
-    preRequestScript: ''
-  }
+  state.formData = createDefaultFormData()
   state.modalVisible = true
 }
 
-const showEditModal = (testcaseId: string) => {
-  const testcase = state.testcases.find(t => t.id === testcaseId)
-  if (!testcase) return
+const resetImportState = () => {
+  state.importForm = createDefaultImportFormData()
+  state.importPreviewItems = []
+  state.importPreviewMeta = null
+  state.selectedImportKeys = []
+  state.importPreviewLoading = false
+  state.importSubmitLoading = false
+  if (importFileInputRef.value) {
+    importFileInputRef.value.value = ''
+  }
+}
 
-  state.modalTitle = '编辑用例'
-  state.isEditing = true
-  state.currentEditId = testcaseId
-  state.activeTab = 'basic'
+const showImportModal = () => {
+  resetImportState()
+  state.importModalVisible = true
+}
+
+const handleImportModalCancel = () => {
+  state.importModalVisible = false
+}
+
+const triggerImportFileSelect = () => {
+  importFileInputRef.value?.click()
+}
+
+const handleImportFileChange = async (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) {
+    return
+  }
+
+  try {
+    state.importForm.document_content = await file.text()
+    message.success(`已加载文件：${file.name}`)
+  } catch (error) {
+    console.error('读取导入文件失败:', error)
+    message.error('读取文件失败，请重试')
+  } finally {
+    target.value = ''
+  }
+}
+
+const validateImportForm = () => {
+  if (!state.importForm.project_id) {
+    message.error('请选择要导入到的项目')
+    return false
+  }
+
+  if (state.importForm.source_type === 'openapi_url' && !state.importForm.source_url.trim()) {
+    message.error('请输入 OpenAPI 文档地址')
+    return false
+  }
+
+  if (
+    state.importForm.source_type === 'openapi_json'
+    && !state.importForm.document_content.trim()
+  ) {
+    message.error('请输入或加载 OpenAPI JSON 内容')
+    return false
+  }
+
+  return true
+}
+
+const previewImportCases = async () => {
+  if (!validateImportForm()) {
+    return
+  }
+
+  state.importPreviewLoading = true
+  try {
+    const response = await CaseApi.previewImport({
+      project_id: state.importForm.project_id!,
+      source_type: state.importForm.source_type,
+      source_url: state.importForm.source_type === 'openapi_url'
+        ? state.importForm.source_url.trim()
+        : undefined,
+      document_content: state.importForm.source_type === 'openapi_json'
+        ? state.importForm.document_content
+        : undefined,
+    })
+
+    const previewData = normalizeImportPreviewData(response.data)
+    state.importPreviewMeta = {
+      ...previewData,
+      results: previewData.results.map(({ import_key, ...item }) => item),
+    }
+    state.importPreviewItems = previewData.results
+    state.selectedImportKeys = previewData.results.map(item => item.import_key)
+    message.success(`已解析 ${previewData.total_count} 个接口`)
+  } catch (error) {
+    console.error('预览导入用例失败:', error)
+    message.error('导入预览失败，请检查文档内容后重试')
+  } finally {
+    state.importPreviewLoading = false
+  }
+}
+
+const commitImportCases = async () => {
+  if (!validateImportForm()) {
+    return
+  }
+
+  const selectedItems = state.importPreviewItems
+    .filter(item => state.selectedImportKeys.includes(item.import_key))
+    .map(({ import_key, ...item }) => item)
+
+  if (selectedItems.length === 0) {
+    message.error('请至少选择一个要导入的接口')
+    return
+  }
+
+  state.importSubmitLoading = true
+  try {
+    const response = await CaseApi.commitImport({
+      project_id: state.importForm.project_id!,
+      source_type: state.importForm.source_type,
+      source_url: state.importForm.source_type === 'openapi_url'
+        ? state.importForm.source_url.trim()
+        : undefined,
+      document_content: state.importForm.source_type === 'openapi_json'
+        ? state.importForm.document_content
+        : undefined,
+      items: selectedItems,
+      conflict_policy: state.importForm.conflict_policy,
+      default_status: state.importForm.default_status,
+    })
+
+    const result = response.data
+    message.success(
+      `导入完成：新增 ${result.created_count}，覆盖 ${result.updated_count}，跳过 ${result.skipped_count}`
+    )
+    state.importModalVisible = false
+    await fetchCaseList()
+  } catch (error) {
+    console.error('提交导入失败:', error)
+    message.error('导入用例失败，请稍后重试')
+  } finally {
+    state.importSubmitLoading = false
+  }
+}
+
+const fillFormData = (testcase: CaseInfo) => {
   state.formData = {
-    id: testcase.id,
     name: testcase.name,
+    project_id: testcase.project_id,
     project: testcase.project,
     type: testcase.type,
     status: testcase.status,
-    description: testcase.description,
-    method: testcase.method,
-    url: testcase.url,
-    params: testcase.params || '',
+    description: testcase.description || '',
+    method: testcase.method || 'POST',
+    url: testcase.url || '',
+    headers: normalizeHeaders(testcase.headers),
     body: testcase.body || '',
-    headers: Array.isArray(testcase.headers) ? [...testcase.headers] : [],
     assertion: testcase.assertion || '',
-    expectedStatus: testcase.expectedStatus || '',
-    expectedResponseTime: testcase.expectedResponseTime || null,
-    preRequestScript: testcase.preRequestScript || ''
+    expected_status: testcase.expected_status || '',
+    expected_response_time: testcase.expected_response_time || null,
+    pre_request_script: testcase.pre_request_script || '',
+    post_request_script: testcase.post_request_script || '',
   }
-  state.modalVisible = true
 }
 
-const handleModalOk = () => {
-  const { name, project, type, method, url } = state.formData
+const showEditModal = async (caseId: number) => {
+  try {
+    const testcase = await loadCaseDetail(caseId)
+    state.modalTitle = '编辑用例'
+    state.isEditing = true
+    state.currentEditId = caseId
+    state.activeTab = 'basic'
+    fillFormData(testcase)
+    state.modalVisible = true
+  } catch (error) {
+    console.error('获取用例详情失败:', error)
+    message.error('用例详情加载失败，请稍后重试')
+  }
+}
 
-  // 验证
-  if (!name.trim()) {
+const buildConfigPayload = (caseId: number) => ({
+  id: caseId,
+  headers: state.formData.headers
+    .map(({ name, value }) => ({ name: name.trim(), value: value.trim() }))
+    .filter(item => item.name || item.value),
+  body: state.formData.body || undefined,
+  expected_status: state.formData.expected_status || undefined,
+  expected_response_time: state.formData.expected_response_time,
+  assertion: state.formData.assertion || undefined,
+  pre_request_script: state.formData.pre_request_script || undefined,
+  post_request_script: state.formData.post_request_script || undefined,
+})
+
+const validateForm = () => {
+  if (!state.formData.name.trim()) {
     message.error('请输入用例名称')
-    return
+    return false
   }
 
-  if (!project) {
+  if (!state.formData.project_id || !state.formData.project) {
     message.error('请选择所属项目')
-    return
+    return false
   }
 
-  if (type === 'http' && !url.trim()) {
+  if (state.formData.type !== 'custom' && !state.formData.url.trim()) {
     message.error('请输入请求URL')
+    return false
+  }
+
+  return true
+}
+
+const handleModalOk = async () => {
+  if (!validateForm()) {
     return
   }
 
-  if (state.isEditing && state.currentEditId) {
-    // 编辑用例
-    const index = state.testcases.findIndex(t => t.id === state.currentEditId)
-    if (index !== -1) {
-      state.testcases[index] = {
-        ...state.testcases[index],
-        ...state.formData,
-        headers: [...state.formData.headers],
-        updatedAt: new Date().toLocaleString('zh-CN')
+  state.submitLoading = true
+  try {
+    let caseId = state.currentEditId
+
+    if (state.isEditing && state.currentEditId) {
+      await CaseApi.updateCase({
+        id: state.currentEditId,
+        name: state.formData.name.trim(),
+        type: state.formData.type,
+        project_id: state.formData.project_id,
+        project: state.formData.project,
+        method: state.formData.method,
+        url: state.formData.type === 'custom' ? '' : state.formData.url.trim(),
+        description: state.formData.description || undefined,
+        status: state.formData.status,
+      })
+    } else {
+      const response = await CaseApi.createCase({
+        name: state.formData.name.trim(),
+        type: state.formData.type,
+        project_id: state.formData.project_id!,
+        project: state.formData.project,
+        method: state.formData.method,
+        url: state.formData.type === 'custom' ? '' : state.formData.url.trim(),
+        description: state.formData.description || undefined,
+      })
+      caseId = response.data.id
+
+      if (state.formData.status !== 'draft') {
+        await CaseApi.updateCase({
+          id: caseId,
+          status: state.formData.status,
+        })
       }
-      message.success(`用例 ${name} 已更新`)
-    }
-  } else {
-    // 新增用例
-    const newId = `TC-${String(state.testcases.length + 1).padStart(3, '0')}`
-    const now = new Date().toLocaleString('zh-CN')
-
-    const newTestCase = {
-      ...state.formData,
-      id: newId,
-      headers: [...state.formData.headers],
-      createdAt: now,
-      updatedAt: now
     }
 
-    state.testcases.unshift(newTestCase)
-    message.success(`用例 ${name} 已创建`)
+    if (caseId) {
+      await CaseApi.configCase(buildConfigPayload(caseId))
+    }
+
+    message.success(state.isEditing ? '用例已更新' : '用例已创建')
+    state.modalVisible = false
+    await fetchCaseList()
+  } catch (error) {
+    console.error('保存用例失败:', error)
+    message.error('保存用例失败，请稍后重试')
+  } finally {
+    state.submitLoading = false
   }
-
-  state.modalVisible = false
-  resetFilters()
 }
 
 const handleModalCancel = () => {
   state.modalVisible = false
 }
 
-const handleTabChange = (key: string) => {
-  state.activeTab = key
-}
-
-const handleTypeChange = (value: string) => {
-  if (value !== 'http') {
-    state.formData.method = ''
-  } else {
-    state.formData.method = 'POST'
-  }
-}
-
-const addHeader = () => {
-  state.formData.headers.push({ name: '', value: '' })
-}
-
-const removeHeader = (index: number) => {
-  state.formData.headers.splice(index, 1)
-}
-
-const previewTestCase = (testcase: any) => {
-  state.previewData = {
-    id: testcase.id,
-    name: testcase.name,
-    project: testcase.project,
-    type: testcase.type,
-    method: testcase.method,
-    status: testcase.status,
-    description: testcase.description,
-    url: testcase.url,
-    headers: Array.isArray(testcase.headers) ? [...testcase.headers] : [],
-    body: testcase.body || '',
-    assertion: testcase.assertion || '',
-    preRequestScript: testcase.preRequestScript || '',
-    createdAt: testcase.createdAt,
-    updatedAt: testcase.updatedAt
-  }
-  state.previewTab = 'info'
+const previewCase = async (caseId: number) => {
   state.previewVisible = true
+  state.previewLoading = true
+  state.previewTab = 'info'
+  try {
+    state.previewData = await loadCaseDetail(caseId)
+  } catch (error) {
+    console.error('预览用例失败:', error)
+    message.error('用例详情加载失败，请稍后重试')
+    state.previewVisible = false
+  } finally {
+    state.previewLoading = false
+  }
 }
 
-const copyTestCase = (testcase: any) => {
-  Modal.confirm({
-    title: '确认复制',
-    content: `确定要复制用例 "${testcase.name}" 吗？`,
-    onOk() {
-      const newId = `TC-${String(state.testcases.length + 1).padStart(3, '0')}`
-      const now = new Date().toLocaleString('zh-CN')
+const copyCase = async (caseId: number) => {
+  try {
+    const testcase = await loadCaseDetail(caseId)
+    const createResponse = await CaseApi.createCase({
+      name: `${testcase.name} (副本)`,
+      type: testcase.type,
+      project_id: testcase.project_id,
+      project: testcase.project,
+      method: testcase.method || 'POST',
+      url: testcase.url || '',
+      description: testcase.description || undefined,
+    })
 
-      const copiedTestCase = {
-        ...testcase,
-        id: newId,
-        name: `${testcase.name} (副本)`,
-        headers: Array.isArray(testcase.headers) ? [...testcase.headers] : [],
-        createdAt: now,
-        updatedAt: now
-      }
+    await CaseApi.configCase({
+      id: createResponse.data.id,
+      headers: Array.isArray(testcase.headers) ? testcase.headers : undefined,
+      body: testcase.body || undefined,
+      expected_status: testcase.expected_status || undefined,
+      expected_response_time: testcase.expected_response_time,
+      assertion: testcase.assertion || undefined,
+      pre_request_script: testcase.pre_request_script || undefined,
+      post_request_script: testcase.post_request_script || undefined,
+      extract: testcase.extract || undefined,
+    })
 
-      state.testcases.unshift(copiedTestCase)
-      resetFilters()
-      message.success(`用例 "${testcase.name}" 已复制为 "${copiedTestCase.name}"`)
+    if (testcase.status && testcase.status !== 'draft') {
+      await CaseApi.updateCase({
+        id: createResponse.data.id,
+        status: testcase.status,
+      })
     }
-  })
+
+    message.success(`用例 "${testcase.name}" 已复制`)
+    await fetchCaseList()
+  } catch (error) {
+    console.error('复制用例失败:', error)
+    message.error('复制用例失败，请稍后重试')
+  }
 }
 
-const deleteTestCase = (testcaseId: string) => {
-  const testcase = state.testcases.find(t => t.id === testcaseId)
-  if (!testcase) return
+const deleteCase = async (caseId: number) => {
+  const testcase = state.testcases.find(item => item.id === caseId)
+  if (!testcase) {
+    return
+  }
 
   Modal.confirm({
     title: '确认删除',
     content: `确定要删除用例 "${testcase.name}" 吗？此操作不可恢复。`,
     okType: 'danger',
-    onOk() {
-      const index = state.testcases.findIndex(t => t.id === testcaseId)
-      if (index !== -1) {
-        state.testcases.splice(index, 1)
-        resetFilters()
-        state.selectedTestCaseIds = state.selectedTestCaseIds.filter(id => id !== testcaseId)
-        message.success(`用例 "${testcase.name}" 已删除`)
-      }
-    }
+    async onOk() {
+      await CaseApi.deleteCase({ id: caseId })
+      message.success(`用例 "${testcase.name}" 已删除`)
+      await fetchCaseList()
+    },
   })
 }
 
-const toggleSelectAll = (e: any) => {
-  if (e.target.checked) {
-    state.selectedTestCaseIds = paginatedTestCases.value.map(t => t.id)
+const toggleSelectAll = (event: { target: { checked: boolean } }) => {
+  if (event.target.checked) {
+    state.selectedCaseIds = state.testcases.map(item => item.id)
   } else {
-    state.selectedTestCaseIds = []
+    state.selectedCaseIds = []
   }
-  state.isAllSelected = e.target.checked
+  syncSelectState()
 }
 
-const batchEnableTestCases = () => {
-  if (state.selectedTestCaseIds.length === 0) return
+const batchUpdateStatus = async (status: string) => {
+  if (state.selectedCaseIds.length === 0) {
+    return
+  }
 
+  const statusText = statusMap[status]?.text || status
   Modal.confirm({
-    title: '确认启用',
-    content: `确定要启用选中的 ${state.selectedTestCaseIds.length} 个用例吗？`,
-    onOk() {
-      state.testcases.forEach(testcase => {
-        if (state.selectedTestCaseIds.includes(testcase.id)) {
-          testcase.status = 'active'
-          testcase.updatedAt = new Date().toLocaleString('zh-CN')
-        }
-      })
-
-      message.success(`已启用 ${state.selectedTestCaseIds.length} 个用例`)
-      state.selectedTestCaseIds = []
-      state.isAllSelected = false
-      resetFilters()
-    }
+    title: `确认批量更新状态`,
+    content: `确定要将选中的 ${state.selectedCaseIds.length} 个用例设置为“${statusText}”吗？`,
+    async onOk() {
+      await Promise.all(
+        state.selectedCaseIds.map(id =>
+          CaseApi.updateCase({
+            id,
+            status,
+          })
+        )
+      )
+      message.success(`已更新 ${state.selectedCaseIds.length} 个用例状态`)
+      state.selectedCaseIds = []
+      syncSelectState()
+      await fetchCaseList()
+    },
   })
 }
 
-const batchDisableTestCases = () => {
-  if (state.selectedTestCaseIds.length === 0) return
+const batchDeleteCases = async () => {
+  if (state.selectedCaseIds.length === 0) {
+    return
+  }
 
   Modal.confirm({
-    title: '确认停用',
-    content: `确定要停用选中的 ${state.selectedTestCaseIds.length} 个用例吗？`,
-    onOk() {
-      state.testcases.forEach(testcase => {
-        if (state.selectedTestCaseIds.includes(testcase.id)) {
-          testcase.status = 'inactive'
-          testcase.updatedAt = new Date().toLocaleString('zh-CN')
-        }
-      })
-
-      message.success(`已停用 ${state.selectedTestCaseIds.length} 个用例`)
-      state.selectedTestCaseIds = []
-      state.isAllSelected = false
-      resetFilters()
-    }
-  })
-}
-
-const batchExportTestCases = () => {
-  if (state.selectedTestCaseIds.length === 0) return
-
-  const exportData = state.testcases.filter(testcase =>
-      state.selectedTestCaseIds.includes(testcase.id)
-  )
-
-  message.info(`已准备导出 ${state.selectedTestCaseIds.length} 个用例数据 - 在实际系统中会生成下载文件`)
-  // 在实际系统中这里会生成JSON或CSV文件供下载
-}
-
-const batchDeleteTestCases = () => {
-  if (state.selectedTestCaseIds.length === 0) return
-
-  Modal.confirm({
-    title: '确认删除',
-    content: `确定要删除选中的 ${state.selectedTestCaseIds.length} 个用例吗？此操作不可恢复。`,
+    title: '确认批量删除',
+    content: `确定要删除选中的 ${state.selectedCaseIds.length} 个用例吗？此操作不可恢复。`,
     okType: 'danger',
-    onOk() {
-      // 从后往前删除，避免索引问题
-      for (let i = state.testcases.length - 1; i >= 0; i--) {
-        if (state.selectedTestCaseIds.includes(state.testcases[i].id)) {
-          state.testcases.splice(i, 1)
-        }
-      }
-
-      message.success(`已删除 ${state.selectedTestCaseIds.length} 个用例`)
-      state.selectedTestCaseIds = []
-      state.isAllSelected = false
-      resetFilters()
-    }
+    async onOk() {
+      await Promise.all(state.selectedCaseIds.map(id => CaseApi.deleteCase({ id })))
+      message.success(`已删除 ${state.selectedCaseIds.length} 个用例`)
+      state.selectedCaseIds = []
+      syncSelectState()
+      await fetchCaseList()
+    },
   })
 }
 
-// 工具函数
-const truncateText = (text: string, maxLength: number) => {
-  if (!text) return ''
-  return text.length > maxLength ? text.substring(0, maxLength) + '...' : text
+const batchExportCases = () => {
+  if (state.selectedCaseIds.length === 0) {
+    return
+  }
+  message.info(`已选中 ${state.selectedCaseIds.length} 个用例，导出功能将在下一轮接入文件下载。`)
 }
 
-const formatHeaders = (headers: Array<{ name: string, value: string }>) => {
-  if (!headers || headers.length === 0) return '无'
-  return headers.map(h => `${h.name}: ${h.value}`).join('\n')
-}
-
-onMounted(() => {
-  // 初始化数据
-  resetFilters()
+onMounted(async () => {
+  await fetchProjectOptions()
+  await fetchCaseList()
 })
 </script>
 
@@ -1337,15 +1550,14 @@ onMounted(() => {
 .app-container {
   padding: 10px;
   min-height: calc(100vh - 64px);
-  box-sizing: border-box; /* 确保padding被包含在高度内 */
-  overflow-y: auto; /* 只在需要时显示滚动条 */
-
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
-  //align-items: flex-start;
+  align-items: flex-start;
   margin-bottom: 20px;
   flex-wrap: wrap;
   gap: 16px;
@@ -1368,10 +1580,6 @@ onMounted(() => {
   margin: 8px 0 0 0;
 }
 
-.stats-row {
-  margin-bottom: 20px;
-}
-
 .filter-card {
   margin-bottom: 20px;
 }
@@ -1385,6 +1593,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .batch-buttons {
@@ -1400,108 +1609,98 @@ onMounted(() => {
 }
 
 .selected-count span {
-  color: #1890ff;
+  color: #1677ff;
   font-weight: 600;
 }
 
-.testcase-card {
-  height: 100%;
-  margin-bottom: 20px;
+.ellipsis-text {
+  color: rgba(0, 0, 0, 0.75);
 }
 
-.testcase-card-header {
-  margin-bottom: 12px;
+.pagination-container {
+  margin-top: 20px;
+  text-align: right;
 }
 
-.testcase-name {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 4px 0;
-  color: rgba(0, 0, 0, 0.85);
+.header-add-button {
+  width: 100%;
+  margin-top: 16px;
 }
 
-.testcase-id {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
-  margin-bottom: 8px;
-}
-
-.testcase-meta {
-  background-color: #fafafa;
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-.meta-item {
+.import-layout {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.meta-item:last-child {
-  margin-bottom: 0;
+.import-config-card,
+.import-preview-card {
+  border-radius: 10px;
 }
 
-.meta-label {
-  font-size: 12px;
+.import-json-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.import-file-input {
+  display: none;
+}
+
+.import-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.import-summary {
   color: rgba(0, 0, 0, 0.45);
-}
-
-.meta-value {
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.85);
-  font-weight: 500;
-}
-
-.testcase-description {
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.65);
-  line-height: 1.5;
-  margin-bottom: 12px;
-}
-
-.testcase-url {
-  background-color: #fafafa;
-  border-radius: 4px;
-  padding: 8px 12px;
-  margin-bottom: 12px;
   font-size: 13px;
 }
 
-.url-label {
-  color: rgba(0, 0, 0, 0.45);
-  margin-right: 8px;
-}
-
-.url-value {
-  color: rgba(0, 0, 0, 0.85);
-  font-family: 'Courier New', monospace;
-  word-break: break-all;
-}
-
-.testcase-footer {
-  display: flex;
-  justify-content: space-between;
+.import-duplicate-text {
+  margin-top: 4px;
   font-size: 12px;
   color: rgba(0, 0, 0, 0.45);
-  padding-top: 12px;
-  border-top: 1px solid #f0f0f0;
 }
 
-.create-time, .update-time {
+.code-textarea {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.preview-loading {
+  min-height: 220px;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
-.time-label {
-  margin-bottom: 2px;
+.preview-section {
+  margin-bottom: 16px;
 }
 
-.time-value {
-  color: rgba(0, 0, 0, 0.65);
+.preview-section-title {
   font-weight: 500;
+  margin-bottom: 8px;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.preview-code {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  background-color: #fafafa;
+  color: rgba(0, 0, 0, 0.85);
+  padding: 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0;
+  border: 1px solid #f0f0f0;
 }
 
 .empty-state {
@@ -1527,29 +1726,8 @@ onMounted(() => {
   margin: 0 auto 16px;
 }
 
-.pagination-container {
-  margin-top: 20px;
-  text-align: right;
-}
-
-.code-textarea {
-  font-family: 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.preview-code {
-  font-family: 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  background-color: #fafafa;
-  color: rgba(0, 0, 0, 0.85);
-  padding: 16px;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 0;
-  border: 1px solid #f0f0f0;
+.compact-empty {
+  padding: 24px 0;
 }
 
 @media (max-width: 768px) {
@@ -1557,23 +1735,13 @@ onMounted(() => {
     flex-direction: column;
   }
 
-  .stats-row .ant-col {
-    margin-bottom: 16px;
-  }
-
   .batch-content {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
   }
 
   .selected-count {
     margin-left: 0;
-    align-self: flex-end;
-  }
-
-  .testcase-card {
-    margin-bottom: 16px;
   }
 }
 </style>

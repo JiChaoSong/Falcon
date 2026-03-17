@@ -49,14 +49,22 @@ class BaseService(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         """根据ID获取记录"""
         pass
 
-    def list(self, page: int = 0, page_size: int = 100, **kwargs):
-        # 核心修复：仅过滤 值为 None 的查询条件（保留0、False等合法值）
-        valid_query = {key: val for key, val in kwargs.items() if val is not None}
+    def list(self, page: int = 1, page_size: int = 100, **kwargs):
+        # 过滤 None 和空白字符串，保留 0、False 等合法值
+        valid_query = {}
+        for key, val in kwargs.items():
+            if val is None:
+                continue
+            if isinstance(val, str) and not val.strip():
+                continue
+            valid_query[key] = val
 
         # 移除分页参数，避免作为查询条件传入filter
         valid_query.pop('page', None)
         valid_query.pop('page_size', None)
 
+        page = max(page, 1)
+        page_size = max(page_size, 1)
         offset_num = (page - 1) * page_size
 
         # SQLAlchemy 规范写法，使用 false() 替代 Python 布尔值
@@ -66,9 +74,6 @@ class BaseService(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
 
         # 添加字符串模糊查询
         for field_name, value in valid_query.items():
-            if value is  None:
-                continue
-
             # 检查字段是否存在
             if not hasattr(self.model_class, field_name):
                 continue

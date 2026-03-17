@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Enum as SQLAlchemyEnum, func
+from sqlalchemy import BigInteger, Column, Integer, String, Text, DateTime, ForeignKey, JSON, Enum as SQLAlchemyEnum, func
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from enum import Enum
 
@@ -52,8 +52,8 @@ class ProjectMember(BaseModel):
 
     __tablename__ = "project_members"
 
-    project_id:Mapped[int] = mapped_column(Integer, nullable=False, comment='项目id')
-    member_id:Mapped[int] = mapped_column(Integer, nullable=False, comment='用户id')
+    project_id:Mapped[int] = mapped_column(BigInteger, nullable=False, comment='项目id')
+    member_id:Mapped[int] = mapped_column(BigInteger, nullable=False, comment='用户id')
     member_name:Mapped[str] = mapped_column(String(50), nullable=False, comment='用户名称')
     member_role:Mapped[Optional[MemberRoleEnum]] = mapped_column(
         SQLAlchemyEnum(MemberRoleEnum),

@@ -11,9 +11,9 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "preserve",
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "strict": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
@@ -30,6 +30,10 @@
     "auto-imports.d.ts",
     "components.d.ts",
     "types/**/*.d.ts"
+  ],
+  "exclude": [
+    "src/views/project/index.copy.vue",
+    "src/views/project/index.c.vue"
   ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

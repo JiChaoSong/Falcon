@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 
 from app.models import ScenarioStatusEnum
@@ -25,12 +25,20 @@ class ScenarioCreate(BaseModel):
     cases: List[ScenarioCaseBind] = []
 
 class ScenarioUpdate(BaseModel):
+    id: int
     name: str | None = None
     project_id: int | None = None
     project:str | None = None
     description:str | None = None
     cases: Optional[List[ScenarioCaseBind]] = None
-    status: ScenarioStatusEnum = None
+    status: ScenarioStatusEnum | None = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, value):
+        if isinstance(value, str):
+            return value.lower()
+        return value
 
 class QueryScenarioOne(BaseModel):
 
@@ -40,7 +48,20 @@ class QueryScenarioList(BaseQuery):
     name: str | None = None
     project_id: int | None = None
     description:str | None = None
-    status: ScenarioStatusEnum = None
+    status: ScenarioStatusEnum | None = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, value):
+        if isinstance(value, str):
+            return value.lower()
+        return value
+
+
+class ScenarioCaseInfo(BaseModel):
+    case_id: int
+    order: int
+    weight: int
 
 # =============================
 # Response Model Schema
@@ -52,7 +73,9 @@ class ScenarioInfo(BaseSchema):
     project:str
     status: str
     description:str | None = None
-    cases: List[CaseInfo] = []
+    total_testcases: int = 0
+    last_run: datetime | None = None
+    cases: List[ScenarioCaseInfo] = []
 
 
 class ScenarioList(BaseListSchema):

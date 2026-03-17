@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, h } from 'vue'
+import { reactive, computed, onMounted, h } from 'vue'
 import dayjs from 'dayjs'
 import {
   Card as ACard,
@@ -17,8 +17,6 @@ import {
   Pagination,
   Space,
   Divider,
-  Descriptions,
-  DescriptionsItem,
   Tooltip
 } from 'ant-design-vue'
 import {
@@ -28,20 +26,71 @@ import {
   EyeOutlined,
   EditOutlined,
   DeleteOutlined,
+  UserAddOutlined,
   AppstoreOutlined,
   UnorderedListOutlined,
   ProjectOutlined,
   FilterOutlined
 } from '@ant-design/icons-vue'
 import { ProjectApi } from "@/api/project.ts";
-import {ProjectInfoList, QueryProjectList} from "@/types/project";
-import type {ProjectInfo} from "../../types/project";
+import { QueryProjectList } from "@/types/project";
+import type {ProjectInfo, ProjectMemberInfo} from "../../types/project";
+import { useUserStore } from '@/store/modules/user'
+import { UserApi } from '@/api/user'
+import type { UserOption } from '@/types/user'
+
+const userStore = useUserStore()
+
+const normalizeStatus = (status: string | null | undefined): string | null => {
+  if (!status) {
+    return null
+  }
+  return status.toUpperCase()
+}
+
+const normalizePriority = (priority: string | null | undefined): string | null => {
+  if (!priority) {
+    return null
+  }
+  return priority.toLowerCase()
+}
+
+const parseProjectTags = (tags: ProjectInfo["tags"]): string[] => {
+  if (Array.isArray(tags)) {
+    return tags
+  }
+
+  if (typeof tags === 'string' && tags.trim()) {
+    try {
+      const parsed = JSON.parse(tags)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return tags.split(',').map(tag => tag.trim()).filter(Boolean)
+    }
+  }
+
+  return []
+}
+
+const normalizeProject = (project: ProjectInfo): ProjectInfo => ({
+  ...project,
+  status: normalizeStatus(project.status),
+  priority: normalizePriority(project.priority),
+  tags: parseProjectTags(project.tags),
+  members: project.members || [],
+})
 
 // 响应式数据
 const state = reactive({
   // 项目数据
-  projects: [] as ProjectInfoList[],
-  filteredProjects: [] as ProjectInfoList[],
+  projects: [] as ProjectInfo[],
+  filteredProjects: [] as ProjectInfo[],
+  ownerOptions: [] as UserOption[],
+  projectMembers: [] as ProjectMemberInfo[],
+  memberDraft: {
+    member_id: undefined as number | undefined,
+    member_role: 'VIEWER',
+  },
 
   // 分页相关
   currentPage: 1,
@@ -53,21 +102,22 @@ const state = reactive({
 
   // 模态框相关
   modalVisible: false,
+  detailVisible: false,
+  detailLoading: false,
   modalTitle: '创建新项目',
   isEditing: false,
-  currentEditId: null as string | null,
+  currentEditId: null as number | null,
+  detailProject: null as ProjectInfo | null,
 
   // 表单数据
   formData: {
     name: '',
-    key: '',
-    status: 'active',
-    owner: '张三',
+    status: 'ACTIVE',
+    owner_id: userStore.userId || 0,
+    owner_name: userStore.name || '',
     priority: 'medium',
     description: '',
     tags: [] as string[],
-    targetTps: null as number | null,
-    targetRt: null as number | null
   },
 
   // 筛选条件
@@ -75,10 +125,8 @@ const state = reactive({
     name: '',
     status: '',
     tags: [],
-    owner: {
-      id: 0,
-      name: ''
-    },
+    owner_id: undefined as number | undefined,
+    owner_name: '',
     priority: '',
   }
 })
@@ -88,6 +136,26 @@ const paginatedProjects = computed(() => {
   const start = (state.currentPage - 1) * state.pageSize
   const end = start + state.pageSize
   return state.filteredProjects.slice(start, end)
+})
+
+const ownerFilterOptions = computed(() => {
+  const ownerMap = new Map<number, string>()
+
+  state.projects.forEach(project => {
+    if (project.owner_id && project.owner_name) {
+      ownerMap.set(project.owner_id, project.owner_name)
+    }
+  })
+
+  state.ownerOptions.forEach(user => {
+    if (user.id && user.name) {
+      ownerMap.set(user.id, user.name)
+    }
+  })
+
+  return Array.from(ownerMap.entries())
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 })
 
 // 标签颜色映射
@@ -124,28 +192,44 @@ const priorityMap: Record<string, string> = {
   low: '低'
 }
 
+const memberRoleMap: Record<string, { text: string; color: string }> = {
+  OWNER: { text: '负责人', color: 'gold' },
+  ADMIN: { text: '管理员', color: 'blue' },
+  DEVELOPER: { text: '开发', color: 'green' },
+  TEACHER: { text: '测试', color: 'purple' },
+  VIEWER: { text: '只读', color: 'default' },
+}
+
+const memberRoleOptions = [
+  { label: '管理员', value: 'ADMIN' },
+  { label: '开发', value: 'DEVELOPER' },
+  { label: '测试', value: 'TEACHER' },
+  { label: '只读', value: 'VIEWER' },
+]
+
 // 方法
 const applyFilters = () => {
-  const { name, status, tag, owner } = state.searchFilters
+  const { name, status, tags, owner_name, priority } = state.searchFilters
 
   state.filteredProjects = state.projects.filter(project => {
-    // 名称筛选
     if (name && !project.name.toLowerCase().includes(name.toLowerCase())) {
       return false
     }
 
-    // 状态筛选
     if (status && project.status !== status) {
       return false
     }
 
-    // 标签筛选 - 假设接口返回的是字符串数组
-    if (tag && !project.tags?.includes(tag)) {
+    const projectTags = parseProjectTags(project.tags)
+    if (tags.length > 0 && !tags.every(tag => projectTags.includes(tag))) {
       return false
     }
 
-    // 负责人筛选
-    if (owner && project.owner_name !== owner) {
+    if (owner_name && project.owner_name !== owner_name) {
+      return false
+    }
+
+    if (priority && project.priority !== priority) {
       return false
     }
 
@@ -153,20 +237,21 @@ const applyFilters = () => {
   })
 
   state.currentPage = 1
-  state.totalProjects = state.filteredProjects.length
+  state.total = state.filteredProjects.length
 }
 
 const resetFilters = () => {
   state.searchFilters = {
     name: '',
     status: '',
-    tag: '',
-    owner: '',
+    tags: [],
+    owner_id: undefined,
+    owner_name: '',
     priority: ''
   }
   state.filteredProjects = [...state.projects]
   state.currentPage = 1
-  state.totalProjects = state.projects.length
+  state.total = state.projects.length
 }
 
 const switchView = (mode: string) => {
@@ -179,19 +264,18 @@ const showAddModal = () => {
   state.currentEditId = null
   state.formData = {
     name: '',
-    status: 'active',
-    owner: {
-      id: 0,
-      name: ''
-    },
+    status: 'ACTIVE',
+    owner_id: userStore.userId || 0,
+    owner_name: userStore.name || '',
     priority: 'medium',
     description: '',
     tags: [],
   }
+  state.projectMembers = []
   state.modalVisible = true
 }
 
-const showEditModal = (projectId: string) => {
+const showEditModal = async (projectId: number) => {
   const project = state.projects.find(p => p.id === projectId)
   if (!project) return
 
@@ -200,68 +284,54 @@ const showEditModal = (projectId: string) => {
   state.currentEditId = projectId
   state.formData = {
     name: project.name,
-    key: project.key || '',
-    status: project.status || 'active',
-    owner: project.owner_name || '张三',
+    status: project.status || 'ACTIVE',
+    owner_id: project.owner_id,
+    owner_name: project.owner_name || '',
     priority: project.priority || 'medium',
     description: project.description || '',
-    tags: Array.isArray(project.tags) ? [...project.tags] : [],
-    targetTps: project.target_tps || null,
-    targetRt: project.target_rt || null
+    tags: parseProjectTags(project.tags),
   }
+  state.projectMembers = []
+  await fetchProjectMembers(projectId)
   state.modalVisible = true
 }
 
 const handleModalOk = async () => {
-  const { name, key, status, owner, priority, description, tags, targetTps, targetRt } = state.formData
+  const { name, status, owner_id, owner_name, priority, description, tags } = state.formData
 
-  // 验证
   if (!name.trim()) {
     Modal.error({ title: '错误', content: '请输入项目名称' })
     return
   }
 
-  if (!key.trim()) {
-    Modal.error({ title: '错误', content: '请输入项目标识' })
-    return
-  }
-
-  if (key.length < 3) {
-    Modal.error({ title: '错误', content: '项目标识至少需要3个字符' })
+  if (!owner_id || !owner_name.trim()) {
+    Modal.error({ title: '错误', content: '请选择或填写项目负责人' })
     return
   }
 
   try {
     if (state.isEditing && state.currentEditId) {
-      // 编辑项目 - 调用更新接口
       const updateData = {
         id: state.currentEditId,
         name,
-        key,
         status,
-        owner_name: owner,
         priority,
         description,
-        tags: tags.join(','),
-        target_tps: targetTps,
-        target_rt: targetRt
+        tags,
+        owner_id,
+        owner_name,
       }
 
-      // 调用更新接口
       await ProjectApi.updateProject(updateData)
       Modal.success({ title: '成功', content: `项目 ${name} 已更新` })
     } else {
-      // 新增项目 - 调用创建接口
       const createData = {
         name,
-        key,
-        status,
-        owner_name: owner,
         priority,
         description,
-        tags: tags.join(','),
-        target_tps: targetTps,
-        target_rt: targetRt
+        tags,
+        owner_id,
+        owner_name,
       }
 
       await ProjectApi.createProject(createData)
@@ -275,7 +345,9 @@ const handleModalOk = async () => {
       name: state.searchFilters.name,
       priority: state.searchFilters.priority,
       status: state.searchFilters.status,
-      owner_name: state.searchFilters.owner,
+      owner_name: state.searchFilters.owner_name,
+      owner_id: state.searchFilters.owner_id,
+      tags: state.searchFilters.tags,
     })
 
     state.modalVisible = false
@@ -285,7 +357,67 @@ const handleModalOk = async () => {
   }
 }
 
-const deleteProject = async (projectId: string) => {
+const handleOwnerChange = (ownerId: number) => {
+  const owner = state.ownerOptions.find(item => item.id === ownerId)
+  if (!owner) {
+    return
+  }
+  state.formData.owner_id = owner.id
+  state.formData.owner_name = owner.name
+}
+
+const fetchProjectMembers = async (projectId: number) => {
+  try {
+    const response = await ProjectApi.getProjectMembers({ id: projectId })
+    state.projectMembers = response.data
+  } catch (error) {
+    console.error('获取项目成员失败:', error)
+    state.projectMembers = []
+  }
+}
+
+const addProjectMember = async () => {
+  if (!state.currentEditId) {
+    return
+  }
+  if (!state.memberDraft.member_id) {
+    Modal.error({ title: '错误', content: '请选择成员' })
+    return
+  }
+  await ProjectApi.addProjectMember({
+    project_id: state.currentEditId,
+    member_id: state.memberDraft.member_id,
+    member_role: state.memberDraft.member_role,
+  })
+  state.memberDraft.member_id = undefined
+  state.memberDraft.member_role = 'VIEWER'
+  await fetchProjectMembers(state.currentEditId)
+  message.success('项目成员已添加')
+}
+
+const updateProjectMemberRole = async (member: ProjectMemberInfo, role: string) => {
+  if (!state.currentEditId || member.member_role === 'OWNER') {
+    return
+  }
+  await ProjectApi.updateProjectMemberRole({
+    project_id: state.currentEditId,
+    member_id: member.member_id,
+    member_role: role,
+  })
+  await fetchProjectMembers(state.currentEditId)
+  message.success('成员角色已更新')
+}
+
+const removeProjectMember = async (member: ProjectMemberInfo) => {
+  if (!state.currentEditId || member.member_role === 'OWNER') {
+    return
+  }
+  await ProjectApi.removeProjectMember(state.currentEditId, member.member_id)
+  await fetchProjectMembers(state.currentEditId)
+  message.success('成员已移除')
+}
+
+const deleteProject = async (projectId: number) => {
   const project = state.projects.find(p => p.id === projectId)
   if (!project) return
 
@@ -294,7 +426,7 @@ const deleteProject = async (projectId: string) => {
     content: `确定要删除项目 "${project.name}" 吗？此操作不可恢复，且会同时删除项目下的所有场景和任务。`,
     async onOk() {
       try {
-        await ProjectApi.deleteProject(projectId)
+        await ProjectApi.deleteProject({ id: projectId })
 
         // 从本地列表中移除
         const index = state.projects.findIndex(p => p.id === projectId)
@@ -311,39 +443,27 @@ const deleteProject = async (projectId: string) => {
   })
 }
 
-const viewProject = (projectId: string) => {
-  const project = state.projects.find(p => p.id === projectId)
-  if (project) {
-    Modal.info({
-      title: `项目详情: ${project.name}`,
-      width: 600,
-      content: h('div', {}, [
-        h(Descriptions, { column: 2, bordered: true }, {
-          default: () => [
-            h(DescriptionsItem, { label: '项目ID' }, () => project.id),
-            h(DescriptionsItem, { label: '项目标识' }, () => project.key || '-'),
-            h(DescriptionsItem, { label: '负责人' }, () => project.owner_name || '-'),
-            h(DescriptionsItem, { label: '状态' }, () =>
-                h(Tag, { color: statusMap[project.status]?.color || 'default' },
-                    statusMap[project.status]?.text || project.status)
-            ),
-            h(DescriptionsItem, { label: '优先级' }, () => priorityMap[project.priority] || '-'),
-            h(DescriptionsItem, { label: '标签' }, () =>
-                (Array.isArray(project.tags) ? project.tags : []).map(tag =>
-                    h(Tag, { color: tagColors[tag] || 'default', key: tag }, tagNames[tag] || tag)
-                )
-            ),
-            h(DescriptionsItem, { label: '场景数' }, () => project.scenarios_count || 0),
-            h(DescriptionsItem, { label: '任务数' }, () => project.tasks_count || 0),
-            h(DescriptionsItem, { label: '成功率' }, () => `${project.success_rate || 0}%`),
-            h(DescriptionsItem, { label: '平均响应时间' }, () => `${project.avg_response_time || 0}ms`),
-            h(DescriptionsItem, { label: '创建时间' }, () => project.created_at || '-'),
-            h(DescriptionsItem, { label: '最后更新' }, () => project.updated_at || '-'),
-            h(DescriptionsItem, { label: '项目描述', span: 2 }, () => project.description || '-')
-          ]
-        })
-      ])
+const viewProject = async (projectId: number) => {
+  state.detailVisible = true
+  state.detailLoading = true
+  try {
+    const [projectResponse, membersResponse] = await Promise.all([
+      ProjectApi.getProjectInfo({ id: projectId }),
+      ProjectApi.getProjectMembers({ id: projectId }),
+    ])
+    state.detailProject = normalizeProject({
+      ...projectResponse.data,
+      members: membersResponse.data,
+    } as ProjectInfo)
+  } catch (error) {
+    console.error('获取项目详情失败:', error)
+    Modal.error({
+      title: '获取详情失败',
+      content: '项目详情暂时无法加载，请稍后重试',
     })
+    state.detailVisible = false
+  } finally {
+    state.detailLoading = false
   }
 }
 
@@ -357,14 +477,13 @@ const handleGetProjectList = async (data?: QueryProjectList) => {
       status: data?.status || state.searchFilters.status,
       tags: data?.tags || state.searchFilters.tags,
       priority: data?.priority || state.searchFilters.priority,
-      owner_name: data?.name || state.searchFilters.owner.name,
-      owner_id: data?.owner_id || state.searchFilters.owner.id,
+      owner_name: data?.owner_name || state.searchFilters.owner_name,
+      owner_id: data?.owner_id || state.searchFilters.owner_id,
     }
 
     const response = await ProjectApi.getProjectList(params);
 
-    // 假设接口返回结构为 { data: { results: ProjectInfoList[], total: number } }
-    state.projects = response.data.results as ProjectInfo[]
+    state.projects = response.data.results.map(normalizeProject) as ProjectInfo[]
     state.filteredProjects = [...state.projects]
     state.total = response.data.total
 
@@ -374,6 +493,18 @@ const handleGetProjectList = async (data?: QueryProjectList) => {
       title: '获取数据失败',
       content: '无法加载项目列表，请检查网络连接或稍后重试'
     })
+  }
+}
+
+const fetchOwnerOptions = async () => {
+  try {
+    const response = await UserApi.userOptions()
+    state.ownerOptions = response.data
+    if (!state.formData.owner_id && response.data.length > 0) {
+      handleOwnerChange(response.data[0].id)
+    }
+  } catch (error) {
+    console.error('获取用户选项失败:', error)
   }
 }
 
@@ -425,14 +556,7 @@ const columns = [
     width: 150,
     customRender: ({ text }: { text: string | string[] }) => {
       // 处理字符串：解析JSON为数组
-      let tagsArray: string[] = [];
-      if (typeof text === 'string') {
-        // 解析JSON字符串格式的数组
-        tagsArray = JSON.parse(text);
-      } else if (Array.isArray(text)) {
-        // 兼容原生数组格式
-        tagsArray = text;
-      }
+      const tagsArray = parseProjectTags(text as ProjectInfo["tags"])
 
       return h('div', {}, tagsArray.map(tag =>
           h(Tag, {
@@ -504,13 +628,26 @@ const columns = [
 
 const handleOnCloseDrawer = () => {
   state.modalVisible = false
-}
-// 新增项目-提交
-const handleSubmitOk = () => {
-  console.log(state.formData)
+  state.projectMembers = []
 }
 
+const handleCloseDetailDrawer = () => {
+  state.detailVisible = false
+  state.detailProject = null
+  state.detailLoading = false
+}
+
+const openDetailEdit = async () => {
+  const detailProjectId = state.detailProject?.id
+  if (!detailProjectId) {
+    return
+  }
+  handleCloseDetailDrawer()
+  await showEditModal(detailProjectId)
+}
+// 新增项目-提交
 onMounted(() => {
+  fetchOwnerOptions()
   handleGetProjectList()
 })
 
@@ -525,8 +662,8 @@ const handlePageChange = (page: number, pageSize: number) => {
     status: state.searchFilters.status,
     priority: state.searchFilters.priority,
     tags: state.searchFilters.tags,
-    owner_name: state.searchFilters.owner.name,
-    owner_id: state.searchFilters.owner.id
+    owner_name: state.searchFilters.owner_name,
+    owner_id: state.searchFilters.owner_id
   })
 }
 
@@ -546,12 +683,14 @@ const handlePageChange = (page: number, pageSize: number) => {
         <Button.Group>
           <Button
               :type="state.viewMode === 'card' ? 'primary' : 'default'"
+              @click="switchView('card')"
           >
             <template #icon><AppstoreOutlined /></template>
             卡片视图
           </Button>
           <Button
               :type="state.viewMode === 'table' ? 'primary' : 'default'"
+              @click="switchView('table')"
           >
             <template #icon><UnorderedListOutlined /></template>
             表格视图
@@ -588,9 +727,9 @@ const handlePageChange = (page: number, pageSize: number) => {
               style="width: 100%"
           >
             <Select.Option value="">全部状态</Select.Option>
-            <Select.Option value="active">启用中</Select.Option>
-            <Select.Option value="inactive">已停用</Select.Option>
-            <Select.Option value="archived">已归档</Select.Option>
+            <Select.Option value="ACTIVE">启用中</Select.Option>
+            <Select.Option value="INACTIVE">已停用</Select.Option>
+            <Select.Option value="ARCHIVED">已归档</Select.Option>
           </Select>
         </Col>
         <Col :span="6">
@@ -611,16 +750,19 @@ const handlePageChange = (page: number, pageSize: number) => {
         </Col>
         <Col :span="6">
           <Select
-              v-model:value="state.searchFilters.owner_id"
+              v-model:value="state.searchFilters.owner_name"
               placeholder="负责人"
               allow-clear
               style="width: 100%"
           >
             <Select.Option value="">全部负责人</Select.Option>
-            <Select.Option value="张三">张三</Select.Option>
-            <Select.Option value="李四">李四</Select.Option>
-            <Select.Option value="王五">王五</Select.Option>
-            <Select.Option value="赵六">赵六</Select.Option>
+            <Select.Option
+              v-for="owner in ownerFilterOptions"
+              :key="owner.id"
+              :value="owner.name"
+            >
+              {{ owner.name }}
+            </Select.Option>
           </Select>
         </Col>
       </Row>
@@ -629,13 +771,13 @@ const handlePageChange = (page: number, pageSize: number) => {
 
       <Row justify="space-between">
         <Col>
-          <Button >
+          <Button @click="resetFilters">
             <template #icon><RedoOutlined /></template>
             重置筛选条件
           </Button>
         </Col>
         <Col>
-          <Button type="primary" >
+          <Button type="primary" @click="applyFilters">
             <template #icon><SearchOutlined /></template>
             查询项目
           </Button>
@@ -652,7 +794,7 @@ const handlePageChange = (page: number, pageSize: number) => {
             <template #title>
               <div class="project-card-header">
                 <h3 class="project-name">{{ project.name }}</h3>
-                <div class="project-id">{{ project.id }} ({{ project.key || '-' }})</div>
+                <div class="project-id">ID: {{ project.id }}</div>
               </div>
             </template>
 
@@ -693,47 +835,28 @@ const handlePageChange = (page: number, pageSize: number) => {
 
               <div class="meta-item">
                 <span class="meta-label">场景数</span>
-                <div class="meta-value">{{ project.scenarios_count || 0 }}</div>
+                <div class="meta-value">{{ project.scenario_count || 0 }}</div>
               </div>
 
               <div class="meta-item">
                 <span class="meta-label">任务数</span>
-                <div class="meta-value">{{ project.tasks_count || 0 }}</div>
-              </div>
-            </div>
-
-            <div class="project-performance">
-              <div class="performance-item">
-                <div class="performance-value" style="color: #52c41a;">
-                  {{ project.success_rate || 0 }}%
-                </div>
-                <div class="performance-label">成功率</div>
-              </div>
-              <div class="performance-item">
-                <div class="performance-value">{{ project.avg_response_time || 0 }}ms</div>
-                <div class="performance-label">平均响应</div>
-              </div>
-              <div class="performance-item">
-                <div class="performance-value" style="color: #1890ff;">
-                  {{ project.last_task_date ? project.last_task_date.split(' ')[0] : '-' }}
-                </div>
-                <div class="performance-label">最后执行</div>
+                <div class="meta-value">{{ project.task_count || 0 }}</div>
               </div>
             </div>
 
             <template #actions>
               <Tooltip title="查看">
-                <Button type="link" >
+                <Button type="link" @click="viewProject(project.id)">
                   <template #icon><EyeOutlined /></template>
                 </Button>
               </Tooltip>
               <Tooltip title="编辑">
-                <Button type="link" >
+                <Button type="link" @click="showEditModal(project.id)">
                   <template #icon><EditOutlined /></template>
                 </Button>
               </Tooltip>
               <Tooltip title="删除">
-                <Button type="link" danger >
+                <Button type="link" danger @click="deleteProject(project.id)">
                   <template #icon><DeleteOutlined /></template>
                 </Button>
               </Tooltip>
@@ -749,7 +872,7 @@ const handlePageChange = (page: number, pageSize: number) => {
         </div>
         <h3>暂无项目数据</h3>
         <p>当前没有找到符合筛选条件的项目，请尝试调整筛选条件或创建新的项目。</p>
-        <Button type="primary" >
+        <Button type="primary" @click="showAddModal">
           <template #icon><PlusOutlined /></template>
           新增项目
         </Button>
@@ -806,17 +929,29 @@ const handlePageChange = (page: number, pageSize: number) => {
         <Row :gutter="16">
           <Col :span="12">
             <a-form-item label="项目状态" required>
-              <Select v-model:value="state.formData.status"></Select>
+              <Select v-model:value="state.formData.status">
+                <Select.Option value="ACTIVE">启用中</Select.Option>
+                <Select.Option value="INACTIVE">已停用</Select.Option>
+                <Select.Option value="ARCHIVED">已归档</Select.Option>
+              </Select>
             </a-form-item>
           </Col>
           <Col :span="12">
             <a-form-item label="项目优先级" required>
-              <Select v-model:value="state.formData.priority"></Select>
+              <Select v-model:value="state.formData.priority">
+                <Select.Option value="high">高</Select.Option>
+                <Select.Option value="medium">中</Select.Option>
+                <Select.Option value="low">低</Select.Option>
+              </Select>
             </a-form-item>
           </Col>
         </Row>
         <a-form-item label="项目负责人" required>
-          <Input v-model:value="state.formData.owner"></Input>
+          <Select v-model:value="state.formData.owner_id" @change="handleOwnerChange">
+            <Select.Option v-for="user in state.ownerOptions" :key="user.id" :value="user.id">
+              {{ user.name }} ({{ user.username }})
+            </Select.Option>
+          </Select>
         </a-form-item>
         <a-form-item >
           <a-checkbox-group v-model:value="state.formData.tags" :options="tagsOptions">
@@ -836,10 +971,218 @@ const handlePageChange = (page: number, pageSize: number) => {
         </a-form-item>
       </a-form>
 
+      <div v-if="state.isEditing" class="member-section">
+        <Divider orientation="left">项目成员</Divider>
+        <div class="member-toolbar">
+          <Select
+            v-model:value="state.memberDraft.member_id"
+            placeholder="选择用户"
+            style="min-width: 240px"
+            allow-clear
+          >
+            <Select.Option
+              v-for="user in state.ownerOptions.filter(item => item.id !== state.formData.owner_id)"
+              :key="user.id"
+              :value="user.id"
+            >
+              {{ user.name }} ({{ user.username }})
+            </Select.Option>
+          </Select>
+          <Select v-model:value="state.memberDraft.member_role" style="width: 160px">
+            <Select.Option v-for="role in memberRoleOptions" :key="role.value" :value="role.value">
+              {{ role.label }}
+            </Select.Option>
+          </Select>
+          <Button type="dashed" @click="addProjectMember">
+            <template #icon><UserAddOutlined /></template>
+            添加成员
+          </Button>
+        </div>
+
+        <Table
+          :data-source="state.projectMembers"
+          :pagination="false"
+          row-key="id"
+          size="small"
+          class="member-table"
+        >
+          <a-table-column title="成员" data-index="member_name" key="member_name" />
+          <a-table-column title="角色" key="member_role">
+            <template #default="{ record }">
+              <Tag :color="memberRoleMap[record.member_role]?.color || 'default'">
+                {{ memberRoleMap[record.member_role]?.text || record.member_role }}
+              </Tag>
+            </template>
+          </a-table-column>
+          <a-table-column title="加入时间" data-index="join_time" key="join_time">
+            <template #default="{ record }">
+              {{ record.join_time ? dayjs(record.join_time).format('YYYY-MM-DD HH:mm:ss') : '-' }}
+            </template>
+          </a-table-column>
+          <a-table-column title="操作" key="actions">
+            <template #default="{ record }">
+              <Space>
+                <Select
+                  v-if="record.member_role !== 'OWNER'"
+                  :value="record.member_role"
+                  style="width: 140px"
+                  @change="(value: string) => updateProjectMemberRole(record, value)"
+                >
+                  <Select.Option v-for="role in memberRoleOptions" :key="role.value" :value="role.value">
+                    {{ role.label }}
+                  </Select.Option>
+                </Select>
+                <Button v-else type="link" disabled>负责人</Button>
+                <Button
+                  type="link"
+                  danger
+                  :disabled="record.member_role === 'OWNER'"
+                  @click="removeProjectMember(record)"
+                >
+                  移除
+                </Button>
+              </Space>
+            </template>
+          </a-table-column>
+        </Table>
+      </div>
+
       <template #extra>
         <a-space>
           <a-button @click="handleOnCloseDrawer">取消</a-button>
-          <a-button type="primary" @click="handleSubmitOk">保存</a-button>
+          <a-button type="primary" @click="handleModalOk">保存</a-button>
+        </a-space>
+      </template>
+    </a-drawer>
+
+    <a-drawer
+      title="项目详情"
+      width="760px"
+      :open="state.detailVisible"
+      :close="handleCloseDetailDrawer"
+    >
+      <div v-if="state.detailLoading" class="detail-loading">
+        <a-spin tip="项目详情加载中..." />
+      </div>
+
+      <div v-else-if="state.detailProject" class="project-detail">
+        <div class="project-detail-hero">
+          <div class="project-detail-title-wrap">
+            <div class="project-detail-id">项目 ID: {{ state.detailProject.id }}</div>
+            <h2 class="project-detail-title">{{ state.detailProject.name }}</h2>
+            <div class="project-detail-tags">
+              <Tag :color="statusMap[state.detailProject.status || '']?.color || 'default'">
+                {{ statusMap[state.detailProject.status || '']?.text || state.detailProject.status || '未知状态' }}
+              </Tag>
+              <Tag color="processing">
+                优先级：{{ priorityMap[state.detailProject.priority || ''] || '-' }}
+              </Tag>
+              <Tag v-if="state.detailProject.owner_name" color="blue">
+                负责人：{{ state.detailProject.owner_name }}
+              </Tag>
+            </div>
+          </div>
+          <Button type="primary" @click="openDetailEdit">
+            <template #icon><EditOutlined /></template>
+            编辑项目
+          </Button>
+        </div>
+
+        <Row :gutter="[16, 16]" class="detail-metrics">
+          <Col :span="12">
+            <div class="detail-metric-card">
+              <div class="detail-metric-value">{{ state.detailProject.scenario_count || 0 }}</div>
+              <div class="detail-metric-label">关联场景</div>
+            </div>
+          </Col>
+          <Col :span="12">
+            <div class="detail-metric-card">
+              <div class="detail-metric-value">{{ state.detailProject.task_count || 0 }}</div>
+              <div class="detail-metric-label">关联任务</div>
+            </div>
+          </Col>
+        </Row>
+
+        <ACard title="基础信息" class="detail-card">
+          <div class="detail-grid">
+            <div class="detail-field">
+              <span class="detail-field-label">创建时间</span>
+              <span class="detail-field-value">
+                {{ state.detailProject.created_at ? dayjs(state.detailProject.created_at).format('YYYY-MM-DD HH:mm:ss') : '-' }}
+              </span>
+            </div>
+            <div class="detail-field">
+              <span class="detail-field-label">更新时间</span>
+              <span class="detail-field-value">
+                {{ state.detailProject.updated_at ? dayjs(state.detailProject.updated_at).format('YYYY-MM-DD HH:mm:ss') : '-' }}
+              </span>
+            </div>
+            <div class="detail-field detail-field-full">
+              <span class="detail-field-label">项目描述</span>
+              <p class="detail-description">
+                {{ state.detailProject.description || '这个项目还没有填写描述。' }}
+              </p>
+            </div>
+            <div class="detail-field detail-field-full">
+              <span class="detail-field-label">项目标签</span>
+              <div class="detail-tag-list">
+                <Tag
+                  v-for="tag in parseProjectTags(state.detailProject.tags)"
+                  :key="tag"
+                  :color="tagColors[tag] || 'default'"
+                >
+                  {{ tagNames[tag] || tag }}
+                </Tag>
+                <span v-if="parseProjectTags(state.detailProject.tags).length === 0" class="detail-empty-text">
+                  暂无标签
+                </span>
+              </div>
+            </div>
+          </div>
+        </ACard>
+
+        <ACard title="项目成员" class="detail-card">
+          <div v-if="state.detailProject.members?.length" class="detail-member-list">
+            <div
+              v-for="member in state.detailProject.members"
+              :key="member.id"
+              class="detail-member-item"
+            >
+              <div class="detail-member-main">
+                <Avatar size="large" style="background-color: #1677ff">
+                  {{ (member.member_name || '?').charAt(0) }}
+                </Avatar>
+                <div class="detail-member-info">
+                  <div class="detail-member-name">{{ member.member_name || `用户 ${member.member_id}` }}</div>
+                  <div class="detail-member-meta">
+                    <Tag :color="memberRoleMap[member.member_role]?.color || 'default'">
+                      {{ memberRoleMap[member.member_role]?.text || member.member_role }}
+                    </Tag>
+                    <span>
+                      加入时间：{{ member.join_time ? dayjs(member.join_time).format('YYYY-MM-DD HH:mm:ss') : '-' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <Tag :color="member.is_active ? 'success' : 'default'">
+                {{ member.is_active ? '启用' : '停用' }}
+              </Tag>
+            </div>
+          </div>
+          <div v-else class="detail-empty-text">当前项目还没有额外成员。</div>
+        </ACard>
+      </div>
+
+      <template #extra>
+        <a-space>
+          <a-button @click="handleCloseDetailDrawer">关闭</a-button>
+          <a-button
+            v-if="state.detailProject"
+            type="primary"
+            @click="openDetailEdit"
+          >
+            编辑项目
+          </a-button>
         </a-space>
       </template>
     </a-drawer>
@@ -979,6 +1322,188 @@ const handlePageChange = (page: number, pageSize: number) => {
   color: rgba(0, 0, 0, 0.45);
 }
 
+.member-section {
+  margin-top: 24px;
+}
+
+.member-toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.member-table {
+  margin-top: 8px;
+}
+
+.detail-loading {
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.project-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.project-detail-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 24px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f5f9ff 0%, #eef6ff 100%);
+  border: 1px solid #d9e9ff;
+}
+
+.project-detail-title-wrap {
+  flex: 1;
+}
+
+.project-detail-id {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  margin-bottom: 8px;
+}
+
+.project-detail-title {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.2;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.project-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.detail-metrics {
+  margin: 0;
+}
+
+.detail-metric-card {
+  padding: 20px;
+  border-radius: 14px;
+  background: #fafcff;
+  border: 1px solid #edf2fa;
+}
+
+.detail-metric-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1677ff;
+  line-height: 1;
+}
+
+.detail-metric-label {
+  margin-top: 8px;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.detail-card {
+  border-radius: 14px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-field-full {
+  grid-column: 1 / -1;
+}
+
+.detail-field-label {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.detail-field-value {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.detail-description {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: rgba(0, 0, 0, 0.75);
+  white-space: pre-wrap;
+}
+
+.detail-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 32px;
+  align-items: center;
+}
+
+.detail-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-member-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid #edf2fa;
+  border-radius: 12px;
+  background: #fcfdff;
+}
+
+.detail-member-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.detail-member-info {
+  min-width: 0;
+}
+
+.detail-member-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.detail-member-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.detail-empty-text {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
 .empty-state {
   text-align: center;
   padding: 40px 0;
@@ -1024,6 +1549,19 @@ const handlePageChange = (page: number, pageSize: number) => {
 
   .project-card {
     margin-bottom: 16px;
+  }
+
+  .project-detail-hero {
+    flex-direction: column;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-member-item {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>
