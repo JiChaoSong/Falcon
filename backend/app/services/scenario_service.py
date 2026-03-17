@@ -8,14 +8,16 @@
     Desc  :     
 --------------------------------------
 """
+from enum import Enum
 from typing import Optional, Dict, Any, List
 
-from sqlalchemy import Select, false, Delete
+from sqlalchemy import Select, false, Delete, String, Text, cast, func, or_
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.exception import ParamException
 from app.models import Scenario, ScenarioCase
 from app.schemas import scenario as schemas
+from app.services.access_control_service import AccessControlService
 from app.services.base_service import BaseService, ModelType
 from sqlalchemy.orm import Session
 
@@ -27,6 +29,7 @@ class ScenarioService(BaseService[Scenario, schemas.ScenarioCreate, schemas.Scen
     def __init__(self, db: Session):
         super().__init__(db, Scenario)
         self.logger = logging.getLogger(__name__)
+        self.access_control = AccessControlService(db)
 
 
     def _get_scenario_by_id(self, scenario_id: int) -> Optional[Scenario]:
@@ -42,12 +45,16 @@ class ScenarioService(BaseService[Scenario, schemas.ScenarioCreate, schemas.Scen
             self.logger.error(f'场景不存在:{scenario_id}')
             raise ParamException('场景不存在')
 
+        self.access_control.ensure_project_view_access(scenario.project_id)
         return scenario
 
     def _validate_scenario_name_unique(self, name: str,
                                        exclude_scenario_id: int = None,
                                        project_id: int = None) -> None:
         """验证场景名称在项目内唯一"""
+        if not name:
+            return
+
         query = Select(Scenario).where(
             Scenario.name == name,
             Scenario.is_deleted == false()
@@ -129,6 +136,7 @@ class ScenarioService(BaseService[Scenario, schemas.ScenarioCreate, schemas.Scen
     def delete(self, id: int) -> Optional[bool]:
         """删除场景（软删除）"""
         scenario = self._get_scenario_by_id(id)
+        self.access_control.ensure_project_manage_access(scenario.project_id)
 
         if getattr(scenario, 'is_deleted', False):
             self.logger.warning(f"场景已被删除 - ID: {id}")
@@ -160,15 +168,18 @@ class ScenarioService(BaseService[Scenario, schemas.ScenarioCreate, schemas.Scen
     def create(self, data: schemas.ScenarioCreate) -> Dict[str, Any] | None:
 
         create_data = data.model_dump()
+        self.access_control.ensure_project_manage_access(create_data.get('project_id'))
 
         name = create_data.get('name')
         project_id = create_data.get('project_id')
 
-        cases = create_data.pop('cases', [])  # 提取cases，从主数据中移除
+        cases = data.cases
+        create_data.pop('cases', None)
 
         self._validate_scenario_name_unique(name=name, project_id = project_id)
 
         new_scenario = Scenario(**create_data)
+        new_scenario.total_testcases = len(cases)
 
         self.db.add(new_scenario)
 
@@ -216,13 +227,17 @@ class ScenarioService(BaseService[Scenario, schemas.ScenarioCreate, schemas.Scen
 
         update_data = data.model_dump(exclude_unset=True)  # 只包含实际传入的字段
         scenario_id = update_data.get('id')
-        cases = update_data.pop('cases', None)  # 提取cases，None表示不更新
+        cases = data.cases if 'cases' in update_data else None
+        update_data.pop('cases', None)
 
         if not scenario_id:
             raise ParamException("场景ID不能为空")
 
         # 获取现有场景
         scenario = self._get_scenario_by_id(scenario_id)
+        self.access_control.ensure_project_manage_access(scenario.project_id)
+        if 'project_id' in update_data and update_data['project_id'] != scenario.project_id:
+            self.access_control.ensure_project_manage_access(update_data['project_id'])
 
         # 验证名称唯一性（如果名称有更新）
         if 'name' in update_data:
@@ -269,3 +284,72 @@ class ScenarioService(BaseService[Scenario, schemas.ScenarioCreate, schemas.Scen
             ]
 
         return result
+
+    def list(self, page: int = 1, page_size: int = 10, **kwargs):
+        accessible_project_ids = self.access_control.get_accessible_project_ids()
+        if accessible_project_ids is not None:
+            if not accessible_project_ids:
+                return {
+                    "results": [],
+                    "total": 0,
+                    "total_pages": 0,
+                    "page": page,
+                    "page_size": page_size,
+                }
+            project_id = kwargs.get("project_id")
+            if project_id is not None and project_id not in accessible_project_ids:
+                return {
+                    "results": [],
+                    "total": 0,
+                    "total_pages": 0,
+                    "page": page,
+                    "page_size": page_size,
+                }
+
+            query = self.db.query(Scenario).filter(
+                Scenario.is_deleted == false(),
+                Scenario.project_id.in_(accessible_project_ids),
+            )
+            valid_query = {
+                key: val for key, val in kwargs.items()
+                if val is not None and not (isinstance(val, str) and not val.strip())
+            }
+            valid_query.pop("page", None)
+            valid_query.pop("page_size", None)
+            for field_name, value in valid_query.items():
+                if not hasattr(Scenario, field_name):
+                    continue
+                field = getattr(Scenario, field_name)
+                if isinstance(value, Enum):
+                    enum_candidates = {
+                        value.value,
+                        value.name,
+                        str(value.value).lower(),
+                        str(value.name).lower(),
+                        str(value.value).upper(),
+                        str(value.name).upper(),
+                    }
+                    query = query.filter(
+                        or_(*[
+                            func.lower(cast(field, String)) == str(candidate).lower()
+                            for candidate in enum_candidates
+                        ])
+                    )
+                elif isinstance(field.type, (String, Text)):
+                    query = query.filter(field.ilike(f"%{value}%"))
+                else:
+                    query = query.filter(field == value)
+
+            total = query.count()
+            total_pages = (total + page_size - 1) // page_size if total else 0
+            offset_num = (page - 1) * page_size
+            results = query.order_by(Scenario.created_at.desc()).offset(offset_num).limit(page_size).all()
+            return {
+                "results": results,
+                "total": total,
+                "total_pages": total_pages,
+                "page": page,
+                "page_size": page_size,
+            }
+
+        return super().list(page=page, page_size=page_size, **kwargs)

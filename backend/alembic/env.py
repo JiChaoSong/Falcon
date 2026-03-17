@@ -5,7 +5,17 @@ from alembic import context
 from app.models.base import BaseModel
 
 # ⚠️ 关键：显式 import 所有 model
-from app.models import Project, ProjectMember, Case, Scenario, ScenarioCase, Tasks, Users
+from app.models import (
+    Project,
+    ProjectMember,
+    Case,
+    Scenario,
+    ScenarioCase,
+    Tasks,
+    TaskRun,
+    TaskMetricSecond,
+    Users,
+)
 
 config = context.config
 fileConfig(config.config_file_name)

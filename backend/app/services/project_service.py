@@ -8,7 +8,6 @@
     Desc  :     
 --------------------------------------
 """
-import json
 import math
 from typing import Optional, Dict, Any, List, Text
 
@@ -19,7 +18,9 @@ from app.core.exception import ParamException
 from app.decorators.audit import get_current_user
 from app.models import Project, Users, ProjectMember, MemberRoleEnum
 from app.schemas import project as schemas
+from app.services.access_control_service import AccessControlService
 from app.services.base_service import BaseService, ModelType
+from app.services.project_member_service import ProjectMemberService
 from sqlalchemy.orm import Session
 
 import logging
@@ -30,6 +31,8 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
     def __init__(self, db: Session):
         super().__init__(db, Project)
         self.logger = logging.getLogger(__name__)
+        self.access_control = AccessControlService(db)
+        self.member_service = ProjectMemberService(db)
 
     def _get_user_by_id(self, user_id: int) -> Users:
         """根据ID获取用户"""
@@ -100,7 +103,12 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
             )
             self.db.add(project_owner)
 
-    def _update_project_owner(self, project_id: int, new_owner_id: Optional[str] = None) -> None:
+    def _update_project_owner(
+        self,
+        project_id: int,
+        new_owner_id: Optional[int] = None,
+        new_owner_name: Optional[str] = None,
+    ) -> None:
         """更新项目负责人"""
         if new_owner_id is None:
             return  # 没有指定新的负责人，保持原状
@@ -122,10 +130,10 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
                 current_owner.member_role = MemberRoleEnum.VIEWER
 
                 # 添加新的负责人
-                self._add_project_owner(project_id, new_owner_id)
+                self._add_project_owner(project_id, new_owner_id, new_owner_name or current_owner.member_name)
         else:
             # 没有找到负责人，直接添加新的负责人
-            self._add_project_owner(project_id, new_owner_id)
+            self._add_project_owner(project_id, new_owner_id, new_owner_name or "")
 
     def _delete_project_member(self, project_id: int) -> None:
         """删除项目成员"""
@@ -143,10 +151,10 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
         ).scalar_one_or_none()
 
         if not project_owner:
-            ParamException('当前用户不是项目负责人, 无法删除')
+            raise ParamException('当前用户不是项目负责人, 无法删除')
 
         if not project_owner.is_active:
-            ParamException('当前用户项目状态不可用, 无法删除')
+            raise ParamException('当前用户项目状态不可用, 无法删除')
 
         try:
             self.db.execute(
@@ -160,6 +168,7 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
 
 
     def get(self, id: int) -> Optional[ModelType]:
+        self.access_control.ensure_project_view_access(id)
 
         project =  self._get_project_by_id(id)
 
@@ -174,16 +183,20 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
         ).scalar_one_or_none()
 
         # 获取项目负责人信息
+        if not owner:
+            raise ParamException('项目负责人不存在')
+
         user = self._get_user_by_id(owner.member_id)
 
+        result = project.to_dict()
         if user:
-            # 将负责人信息添加到项目对象（根据需要）
-            setattr(project, 'owner_id', user.id)
-            setattr(project, 'owner_name', user.name)
-
-        return project
+            result['owner_id'] = user.id
+            result['owner_name'] = user.name
+        result['members'] = self.member_service.list(id)
+        return result
 
     def delete(self, id: int) -> Optional[bool]:
+        self.access_control.ensure_project_owner_access(id)
 
         project = self._get_project_by_id(id)
 
@@ -220,13 +233,15 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
             operation="project_delete"
         )
 
-        self.db.flush()
-
         if project.is_deleted:
             self._delete_project_member(project_id=id)
 
+        self.db.commit()
+        return True
+
 
     def create(self, data: schemas.ProjectCreate) -> Dict[str, Any] | None:
+        current_user = self.access_control.get_current_user()
 
         create_data = data.model_dump()
 
@@ -237,6 +252,8 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
         owner_name = create_data.pop('owner_name', None)
         if not owner_id:
             raise ParamException("项目负责人不能为空")
+        if not current_user.is_admin and owner_id != current_user.id:
+            raise ParamException("普通用户只能将自己设置为项目负责人")
 
         self._validate_project_name_unique(name)
 
@@ -267,17 +284,19 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
 
     def update(self, data: schemas.ProjectUpdate) -> Dict[str, Any] | None:
 
-        update_data = data.model_dump()
+        update_data = data.model_dump(exclude_unset=True)
         # 提取负责人信息
         owner_id = update_data.pop('owner_id', None)
+        owner_name = update_data.pop('owner_name', None)
 
         name = update_data.get('name')
         project_id = update_data.get('id')
+        self.access_control.ensure_project_manage_access(project_id)
 
         project = self._get_project_by_id(project_id)
 
         if name and name != project.name:
-            self._validate_project_name_unique(name, id)
+            self._validate_project_name_unique(name, project_id)
 
         for field, value in update_data.items():
             # 跳过不允许直接更新的字段
@@ -290,7 +309,10 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
 
         # 更新项目负责人（如果提供了新的负责人）
         if owner_id is not None:
-            self._update_project_owner(id, owner_id)
+            if owner_name is None:
+                owner = self._get_user_by_id(owner_id)
+                owner_name = owner.name
+            self._update_project_owner(project_id, owner_id, owner_name)
 
         self._commit(
             project,
@@ -303,22 +325,23 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
         # 获取当前的负责人
         current_owner = self.db.execute(
             Select(ProjectMember).where(
-                ProjectMember.project_id == id,
+                ProjectMember.project_id == project_id,
                 ProjectMember.member_role == MemberRoleEnum.OWNER,
-                ProjectMember.is_active == True,
-                ProjectMember.is_deleted == False,
+                ProjectMember.is_active == true(),
+                ProjectMember.is_deleted == false(),
             )
         ).scalar_one_or_none()
 
         result = project.to_dict()
         result['owner_id'] = current_owner.member_id if current_owner else None
-        result['owner_name'] = current_owner.member.name if current_owner else None
+        result['owner_name'] = current_owner.member_name if current_owner else owner_name
 
         return result
 
     def list(self, page: int = 1, page_size: int = 10, **kwargs):
 
         query_data = kwargs.copy()
+        accessible_project_ids = self.access_control.get_accessible_project_ids()
 
         # 构建基础查询
         base_query = """
@@ -365,6 +388,9 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
                          ORDER BY start_time DESC LIMIT 1
                      ) t ON p.id = t.project_id 
                      INNER JOIN project_members m ON m.project_id = p.id 
+                         AND m.member_role = 'OWNER'
+                         AND m.is_active = true
+                         AND m.is_deleted = false
                      WHERE p.is_deleted = false 
                     
                      """
@@ -372,7 +398,10 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
         count_query = """
                      SELECT COUNT(*) as total
                      FROM projects p      
-                     INNER JOIN project_members m ON m.project_id = p.id 
+                     INNER JOIN project_members m ON m.project_id = p.id
+                         AND m.member_role = 'OWNER'
+                         AND m.is_active = true
+                         AND m.is_deleted = false
                      WHERE p.is_deleted = false 
                     
                      """
@@ -396,6 +425,19 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
 
         valid_query = {key: val for key, val in query_data.items() if val is not None and val != ''}
 
+        if accessible_project_ids is not None:
+            if not accessible_project_ids:
+                return {
+                    'page': page,
+                    'page_size': page_size,
+                    'total_pages': 0,
+                    'total': 0,
+                    'results': [],
+                }
+            project_ids = ",".join(str(project_id) for project_id in accessible_project_ids)
+            base_query += f" AND p.id IN ({project_ids})"
+            count_query += f" AND p.id IN ({project_ids})"
+
         for field_name, value in valid_query.items():
             if value is  None:
                 continue
@@ -406,9 +448,13 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
 
                     base_query += f" AND p.{field_name} LIKE '%{value}%'"
                     count_query += f" AND p.{field_name} LIKE '%{value}%'"
+                elif field_name in {"status", "priority"}:
+                    normalized_value = str(value).lower()
+                    base_query += f" AND LOWER(p.{field_name}) = '{normalized_value}'"
+                    count_query += f" AND LOWER(p.{field_name}) = '{normalized_value}'"
                 else:
-                    base_query += f' AND p.{field_name} == {value}'
-                    count_query += f' AND p.{field_name} == {value}'
+                    base_query += f' AND p.{field_name} = {value}'
+                    count_query += f' AND p.{field_name} = {value}'
 
             if hasattr(ProjectMember, field_name):
                 field = getattr(ProjectMember, field_name)
@@ -423,7 +469,7 @@ class ProjectService(BaseService[Project, schemas.ProjectCreate, schemas.Project
 
         order_query = f" ORDER BY p.created_at DESC"
 
-        limit_offset_query = f" LIMIT {page} OFFSET {(page - 1) * page_size};"
+        limit_offset_query = f" LIMIT {page_size} OFFSET {(page - 1) * page_size};"
 
         base_query += order_query + limit_offset_query
 

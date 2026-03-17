@@ -9,10 +9,10 @@
 --------------------------------------
 """
 from datetime import datetime
-from typing import Optional, Any, Tuple, Dict
+from typing import Optional, Any, Tuple, Dict, List
 
 from fastapi import HTTPException, Request
-from sqlalchemy import Select, insert, false
+from sqlalchemy import Select, insert, false, true
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from app.core.security import verify_access_token, create_access_token, refresh_
 from app.decorators.audit import with_user_context
 from app.schemas.users import UserUpdate, UserCreate
 from app.services.base_service import BaseService, CreateSchemaType, ModelType
+from app.services.access_control_service import AccessControlService
 from app.models.users import Users
 import logging
 
@@ -30,6 +31,7 @@ class UserService(BaseService[Users, UserCreate, UserUpdate]):
     def __init__(self, db: Session):
         super().__init__(db, Users)
         self.logger = logging.getLogger(__name__)
+        self.access_control = AccessControlService(db)
 
     def _validate_user_update(self, user_id: int, username: str = None,
                               email: str = None, phone: str = None) -> None:
@@ -182,6 +184,7 @@ class UserService(BaseService[Users, UserCreate, UserUpdate]):
         }
 
     def create(self, obj_in: CreateSchemaType) -> Dict[str, Any] | None:
+        self.access_control.require_admin()
 
         query_params = obj_in.model_dump(exclude_unset=True)
 
@@ -248,6 +251,7 @@ class UserService(BaseService[Users, UserCreate, UserUpdate]):
 
 
     def update(self,  obj_in: UserUpdate) -> Dict[str, Any] | None:
+        self.access_control.require_admin()
 
         update_data = obj_in.model_dump(exclude_unset=True)
         user_id = update_data.get('id')
@@ -283,10 +287,12 @@ class UserService(BaseService[Users, UserCreate, UserUpdate]):
 
     def get(self, id: int) -> Optional[ModelType]:
         """根据ID获取记录"""
+        self.access_control.require_admin()
 
         return self._get_user_by_id(id)
 
     def delete(self, id: int) -> Optional[bool]:
+        self.access_control.require_admin()
 
         user = self._get_user_by_id(id)
 
@@ -332,6 +338,39 @@ class UserService(BaseService[Users, UserCreate, UserUpdate]):
             self.db.rollback()
             self.logger.error(f"用户删除失败 - 数据库错误: {str(e)}")
             raise ParamException("删除用户失败")
+
+    def list(self, page: int = 1, page_size: int = 10, **kwargs):
+        self.access_control.require_admin()
+        return super().list(page=page, page_size=page_size, **kwargs)
+
+    def reset_password(self, user_id: int, password: str) -> bool:
+        self.access_control.require_admin()
+        user = self._get_user_by_id(user_id)
+        user.set_password(password)
+        self._commit(
+            user,
+            success_msg=f"用户密码重置成功 - ID: {user_id}",
+            fail_msg="用户密码重置失败",
+            operation="user_reset_password",
+        )
+        return True
+
+    def options(self) -> List[Dict[str, Any]]:
+        users = self.db.execute(
+            Select(Users).where(
+                Users.is_deleted == false(),
+                Users.is_active == true(),
+            ).order_by(Users.name.asc(), Users.id.asc())
+        ).scalars().all()
+
+        return [
+            {
+                "id": user.id,
+                "username": user.username,
+                "name": user.name,
+            }
+            for user in users
+        ]
 
     def info(self, request:Request) -> Dict[str, Any] | None:
         token  = request.headers.get("Authorization")

@@ -1,5 +1,5 @@
 import type { NavigationGuardNext, RouteLocationNormalized } from 'vue-router'
-import { useUserStore } from '@/store'
+import { useUserStore } from '@/store/modules/user'
 
 /**
  * 认证守卫

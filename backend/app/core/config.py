@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str = "Falcon"
     VERSION: str = "1.0.0"
-    DEBUG: bool = False
+    DEBUG: bool = True
 
     # FastAPI/Starlette 需要的是 list[str]，这里给出安全默认值
     CORS_ORIGINS: list[str] = Field(default_factory=list)
@@ -30,7 +30,10 @@ class Settings(BaseSettings):
     POOL_PRE_PING: bool = True
     POOL_SIZE: int = 10
     MAX_OVERFLOW: int = 20
+    POOL_RECYCLE: int = 1800
+    POOL_TIMEOUT: int = 30
     DB_ECHO: bool = False
+    ID_NODE_ID: int = 1
 
     LOG_LEVEL: str = "INFO"
 

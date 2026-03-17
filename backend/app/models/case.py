@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Optional, Dict
 from enum import Enum
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLAlchemyEnum, JSON
+from sqlalchemy import BigInteger, Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLAlchemyEnum, JSON
 from sqlalchemy.orm import relationship, mapped_column, Mapped
 from app.models import BaseModel
 
@@ -37,7 +37,7 @@ class Case(BaseModel):
         comment="用例状态",
         default=CaseStatusEnum.DRAFT
     )
-    project_id:Mapped[int] = mapped_column(Integer, nullable=False, comment='所属项目id')
+    project_id:Mapped[int] = mapped_column(BigInteger, nullable=False, comment='所属项目id')
     project: Mapped[str] = mapped_column(String(50), comment="所属项目名称")
     headers: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, comment="请求头")
     body:Mapped[Optional[str]] = mapped_column(Text, nullable=True,comment="请求体")

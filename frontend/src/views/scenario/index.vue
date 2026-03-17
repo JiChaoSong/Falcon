@@ -1,149 +1,58 @@
 <template>
   <div class="app-container">
-    <!-- 页面标题和操作 -->
     <div class="page-header">
       <div class="page-title-section">
         <h1 class="page-title">场景管理</h1>
-        <p class="page-subtitle">压测场景配置、用例编排、权重分配，为任务执行提供场景模板</p>
+        <p class="page-subtitle">维护项目场景和用例编排关系，为任务执行提供稳定的场景模板。</p>
       </div>
 
-      <Space>
-        <!-- 视图切换 -->
-        <Button.Group v-show="false">
-          <Button
-              :type="state.viewMode === 'card' ? 'primary' : 'default'"
-              @click="switchView('card')"
-          >
-            <template #icon><AppstoreOutlined /></template>
-            卡片视图
-          </Button>
-          <Button
-              :type="state.viewMode === 'table' ? 'primary' : 'default'"
-              @click="switchView('table')"
-          >
-            <template #icon><UnorderedListOutlined /></template>
-            表格视图
-          </Button>
-        </Button.Group>
-
-        <!-- 新增场景按钮 -->
-        <Button type="primary" @click="showAddModal">
-          <template #icon><PlusOutlined /></template>
-          新增场景
-        </Button>
-      </Space>
+      <Button type="primary" @click="showAddModal">
+        <template #icon><PlusOutlined /></template>
+        新增场景
+      </Button>
     </div>
 
-<!--    &lt;!&ndash; 统计卡片 &ndash;&gt;-->
-<!--    <Row :gutter="16" class="stats-row">-->
-<!--      <Col :span="6">-->
-<!--        <ACard>-->
-<!--          <Statistic-->
-<!--              title="场景总数"-->
-<!--              :value="statistics.total"-->
-<!--              :value-style="{ color: '#1890ff', fontSize: '24px' }"-->
-<!--          >-->
-<!--            <template #prefix><ApiOutlined /></template>-->
-<!--            <template #suffix>-->
-<!--              <span style="font-size: 12px; color: #666">较上月 +8</span>-->
-<!--            </template>-->
-<!--          </Statistic>-->
-<!--        </ACard>-->
-<!--      </Col>-->
-<!--      <Col :span="6">-->
-<!--        <ACard>-->
-<!--          <Statistic-->
-<!--              title="活跃场景"-->
-<!--              :value="statistics.active"-->
-<!--              :value-style="{ color: '#52c41a', fontSize: '24px' }"-->
-<!--          >-->
-<!--            <template #prefix><PlayCircleOutlined /></template>-->
-<!--            <template #suffix>-->
-<!--              <span style="font-size: 12px; color: #666">较上月 +3</span>-->
-<!--            </template>-->
-<!--          </Statistic>-->
-<!--        </ACard>-->
-<!--      </Col>-->
-<!--      <Col :span="6">-->
-<!--        <ACard>-->
-<!--          <Statistic-->
-<!--              title="用例总数"-->
-<!--              :value="statistics.totalTestcases"-->
-<!--              :value-style="{ color: '#faad14', fontSize: '24px' }"-->
-<!--          >-->
-<!--            <template #prefix><UnorderedListOutlined /></template>-->
-<!--            <template #suffix>-->
-<!--              <span style="font-size: 12px; color: #666">较上月 +15</span>-->
-<!--            </template>-->
-<!--          </Statistic>-->
-<!--        </ACard>-->
-<!--      </Col>-->
-<!--      <Col :span="6">-->
-<!--        <ACard>-->
-<!--          <Statistic-->
-<!--              title="执行次数"-->
-<!--              :value="statistics.totalRuns"-->
-<!--              :value-style="{ color: '#13c2c2', fontSize: '24px' }"-->
-<!--          >-->
-<!--            <template #prefix><ScheduleOutlined /></template>-->
-<!--            <template #suffix>-->
-<!--              <span style="font-size: 12px; color: #666">较上月 +24</span>-->
-<!--            </template>-->
-<!--          </Statistic>-->
-<!--        </ACard>-->
-<!--      </Col>-->
-<!--    </Row>-->
-
-    <!-- 筛选区域 -->
     <ACard title="场景筛选" class="filter-card">
       <template #extra><FilterOutlined /></template>
 
       <Row :gutter="16">
-        <Col :span="6">
+        <Col :span="8">
           <Input
-              v-model:value="state.searchFilters.name"
-              placeholder="输入场景名称关键字"
-              allow-clear
-              @pressEnter="applyFilters"
+            v-model:value="state.searchFilters.name"
+            placeholder="输入场景名称"
+            allow-clear
+            @pressEnter="applyFilters"
           />
         </Col>
-        <Col :span="6">
+        <Col :span="8">
           <Select
-              v-model:value="state.searchFilters.project"
-              placeholder="所属项目"
-              allow-clear
-              style="width: 100%"
+            v-model:value="state.searchFilters.project_id"
+            placeholder="所属项目"
+            allow-clear
+            style="width: 100%"
           >
-            <Select.Option value="">全部项目</Select.Option>
-            <Select.Option v-for="project in projectOptions" :key="project" :value="project">
-              {{ project }}
+            <Select.Option :value="undefined">全部项目</Select.Option>
+            <Select.Option
+              v-for="project in state.projectOptions"
+              :key="project.id"
+              :value="project.id"
+            >
+              {{ project.name }}
             </Select.Option>
           </Select>
         </Col>
-        <Col :span="6">
+        <Col :span="8">
           <Select
-              v-model:value="state.searchFilters.status"
-              placeholder="场景状态"
-              allow-clear
-              style="width: 100%"
+            v-model:value="state.searchFilters.status"
+            placeholder="场景状态"
+            allow-clear
+            style="width: 100%"
           >
             <Select.Option value="">全部状态</Select.Option>
-            <Select.Option value="active">启用中</Select.Option>
             <Select.Option value="draft">草稿</Select.Option>
+            <Select.Option value="active">启用中</Select.Option>
             <Select.Option value="inactive">已停用</Select.Option>
-          </Select>
-        </Col>
-        <Col :span="6">
-          <Select
-              v-model:value="state.searchFilters.time"
-              placeholder="创建时间"
-              allow-clear
-              style="width: 100%"
-          >
-            <Select.Option value="">全部时间</Select.Option>
-            <Select.Option value="today">今天</Select.Option>
-            <Select.Option value="week">本周</Select.Option>
-            <Select.Option value="month">本月</Select.Option>
+            <Select.Option value="archived">已归档</Select.Option>
           </Select>
         </Col>
       </Row>
@@ -166,231 +75,128 @@
       </Row>
     </ACard>
 
-    <!-- 场景展示区域 -->
-    <div v-if="state.viewMode === 'card'">
-      <!-- 卡片视图 -->
-      <Row :gutter="[16, 16]" v-if="paginatedScenarios.length > 0">
-        <Col :span="8" v-for="scenario in paginatedScenarios" :key="scenario.id">
-          <ACard class="scenario-card" hoverable>
-            <template #title>
-              <div class="scenario-card-header">
-                <h3 class="scenario-name">{{ scenario.name }}</h3>
-                <div class="scenario-id">{{ scenario.id }}</div>
-              </div>
-            </template>
+    <ACard>
+      <Table
+        :columns="columns"
+        :data-source="state.scenarios"
+        :pagination="false"
+        :loading="state.listLoading"
+        row-key="id"
+        :scroll="{ x: 1200 }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'status'">
+            <Tag :color="statusMap[record.status]?.color || 'default'">
+              {{ statusMap[record.status]?.text || record.status }}
+            </Tag>
+          </template>
 
-            <template #extra>
-              <Tag :color="statusMap[scenario.status].color">
-                {{ statusMap[scenario.status].text }}
-              </Tag>
-            </template>
-
-            <div class="scenario-description">{{ scenario.description }}</div>
-
-            <div class="scenario-meta">
-              <div class="meta-item">
-                <span class="meta-label">所属项目</span>
-                <div class="meta-value">
-                  <ProjectOutlined style="margin-right: 4px" />
-                  {{ scenario.project }}
-                </div>
-              </div>
-
-              <div class="meta-item">
-                <span class="meta-label">用例数量</span>
-                <div class="meta-value">{{ scenario.totalTestcases }}</div>
-              </div>
-
-              <div class="meta-item">
-                <span class="meta-label">创建时间</span>
-                <div class="meta-value">{{ scenario.createdAt.split(' ')[0] }}</div>
-              </div>
-
-              <div class="meta-item">
-                <span class="meta-label">最后修改</span>
-                <div class="meta-value">{{ scenario.updatedAt.split(' ')[0] }}</div>
+          <template v-if="column.key === 'cases'">
+            <div>
+              <div>{{ record.total_testcases || record.cases.length || 0 }} 个用例</div>
+              <div class="subtle-text">
+                {{ getCaseSummary(record.cases) }}
               </div>
             </div>
+          </template>
 
-            <!-- 测试用例预览 -->
-            <ACard size="small" class="testcases-preview">
-              <template #title>
-                <div class="testcases-title">
-                  <span>测试用例配置 {{ scenario.testcases.length > 3 ? `等 ${scenario.testcases.length} 个用例` : '' }}</span>
-                  <Tag color="blue" class="testcases-count">{{ scenario.testcases.length }}</Tag>
-                </div>
-              </template>
+          <template v-if="column.key === 'created_at'">
+            {{ formatDateTime(record.created_at) }}
+          </template>
 
-              <div class="testcases-list">
-                <div
-                    v-for="(tc, index) in scenario.testcases.slice(0, 3)"
-                    :key="tc.id"
-                    class="testcase-item"
-                >
-                  <span class="testcase-name">{{ tc.name }}</span>
-                  <Tag color="orange" class="testcase-weight">{{ tc.weight }}%</Tag>
-                </div>
-              </div>
-            </ACard>
+          <template v-if="column.key === 'last_run'">
+            {{ formatDateTime(record.last_run) }}
+          </template>
 
-            <template #actions>
-              <Tooltip title="编辑">
-                <Button type="link" @click="showEditModal(scenario.id)">
-                  <template #icon><EditOutlined /></template>
+          <template v-if="column.key === 'actions'">
+            <Space size="small">
+              <Tooltip title="预览">
+                <Button type="link" size="small" @click="previewScenario(record.id)">
+                  <EyeOutlined />
                 </Button>
               </Tooltip>
-              <Tooltip title="运行">
-                <Button type="link" @click="runScenario(scenario.id)">
-                  <template #icon><PlayCircleOutlined /></template>
+              <Tooltip title="编辑">
+                <Button type="link" size="small" @click="showEditModal(record.id)">
+                  <EditOutlined />
                 </Button>
               </Tooltip>
               <Tooltip title="复制">
-                <Button type="link" @click="copyScenario(scenario.id)">
-                  <template #icon><CopyOutlined /></template>
+                <Button type="link" size="small" @click="copyScenario(record.id)">
+                  <CopyOutlined />
                 </Button>
               </Tooltip>
               <Tooltip title="删除">
-                <Button type="link" danger @click="deleteScenario(scenario.id)">
-                  <template #icon><DeleteOutlined /></template>
+                <Button type="link" size="small" danger @click="deleteScenario(record.id)">
+                  <DeleteOutlined />
                 </Button>
               </Tooltip>
-            </template>
-          </ACard>
-        </Col>
-      </Row>
+            </Space>
+          </template>
+        </template>
 
-      <!-- 卡片视图空状态 -->
-      <div v-if="paginatedScenarios.length === 0" class="empty-state">
-        <div class="empty-icon">
-          <ApiOutlined />
-        </div>
-        <h3>暂无场景数据</h3>
-        <p>当前没有找到符合筛选条件的场景，请尝试调整筛选条件或创建新的压测场景。</p>
-        <Button type="primary" @click="showAddModal">
-          <template #icon><PlusOutlined /></template>
-          新增场景
-        </Button>
-      </div>
-    </div>
-
-    <!-- 表格视图 -->
-    <div v-else>
-      <ACard>
-        <Table
-            :columns="columns"
-            :data-source="paginatedScenarios"
-            :pagination="false"
-            row-key="id"
-            :scroll="{x: 1300}"
-        >
-          <template #emptyText>
-            <div class="empty-state">
-              <div class="empty-icon">
-                <ApiOutlined />
-              </div>
-              <h3>暂无场景数据</h3>
-              <p>当前没有找到符合筛选条件的场景，请尝试调整筛选条件或创建新的压测场景。</p>
-              <Button type="primary" @click="showAddModal">
-                <template #icon><PlusOutlined /></template>
-                新增场景
-              </Button>
+        <template #emptyText>
+          <div class="empty-state">
+            <div class="empty-icon">
+              <ApiOutlined />
             </div>
-          </template>
+            <h3>暂无场景数据</h3>
+            <p>当前没有找到符合条件的场景，可以先从已有项目下创建一个场景。</p>
+          </div>
+        </template>
+      </Table>
+    </ACard>
 
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'status'">
-              <Tag :color="statusMap[record.status].color">
-                {{ statusMap[record.status].text }}
-              </Tag>
-            </template>
-
-            <template v-if="column.key === 'testcases'">
-              <div>
-                <div style="margin-bottom: 4px">{{ record.totalTestcases }} 个用例</div>
-                <div style="font-size: 12px; color: #666">
-                  {{ record.testcases.slice(0, 2).map(tc => `${tc.name}(${tc.weight}%)`).join(', ') }}
-                  {{ record.testcases.length > 2 ? '...' : '' }}
-                </div>
-              </div>
-            </template>
-
-            <template v-if="column.key === 'actions'">
-              <Space size="small">
-                <Tooltip title="编辑">
-                  <Button type="link" size="small" @click="showEditModal(record.id)">
-                    <template #icon><EditOutlined /></template>
-                  </Button>
-                </Tooltip>
-                <Tooltip title="运行">
-                  <Button type="link" size="small" @click="runScenario(record.id)">
-                    <template #icon><PlayCircleOutlined /></template>
-                  </Button>
-                </Tooltip>
-                <Tooltip title="复制">
-                  <Button type="link" size="small" @click="copyScenario(record.id)">
-                    <template #icon><CopyOutlined /></template>
-                  </Button>
-                </Tooltip>
-                <Tooltip title="删除">
-                  <Button type="link" size="small" danger @click="deleteScenario(record.id)">
-                    <template #icon><DeleteOutlined /></template>
-                  </Button>
-                </Tooltip>
-              </Space>
-            </template>
-          </template>
-        </Table>
-      </ACard>
-    </div>
-
-    <!-- 分页 -->
-    <div class="pagination-container" v-if="state.filteredScenarios.length > 0">
+    <div class="pagination-container" v-if="state.total > 0">
       <Pagination
-          v-model:current="state.currentPage"
-          v-model:pageSize="state.pageSize"
-          :total="state.filteredScenarios.length"
-          show-quick-jumper
-          show-size-changer
-          :show-total="(total: number) => `共 ${total} 条`"
+        v-model:current="state.currentPage"
+        v-model:pageSize="state.pageSize"
+        :total="state.total"
+        :page-size-options="['8', '16', '24', '48']"
+        show-quick-jumper
+        show-size-changer
+        @change="handlePageChange"
+        :show-total="(total: number) => `共 ${total} 条`"
       />
     </div>
 
-    <!-- 新增/编辑场景模态框 -->
     <Modal
-        v-model:visible="state.modalVisible"
-        :title="state.modalTitle"
-        width="800px"
-        @ok="handleModalOk"
-        @cancel="state.modalVisible = false"
-        :confirm-loading="state.modalLoading"
+      v-model:open="state.modalVisible"
+      :title="state.modalTitle"
+      width="860px"
+      :confirm-loading="state.submitLoading"
+      @ok="handleModalOk"
+      @cancel="handleModalCancel"
     >
       <Form layout="vertical">
         <Form.Item label="场景名称" required>
-          <Input
-              v-model:value="state.formData.name"
-              placeholder="例如：首页访问场景"
-          />
+          <Input v-model:value="state.formData.name" placeholder="例如：首页访问场景" />
         </Form.Item>
 
         <Row :gutter="16">
           <Col :span="12">
             <Form.Item label="所属项目" required>
-              <Select v-model:value="state.formData.project">
-                <Select.Option value="">请选择项目</Select.Option>
-                <Select.Option value="电商平台">电商平台</Select.Option>
-                <Select.Option value="API网关">API网关</Select.Option>
-                <Select.Option value="用户中心">用户中心</Select.Option>
-                <Select.Option value="支付系统">支付系统</Select.Option>
-                <Select.Option value="搜索引擎">搜索引擎</Select.Option>
+              <Select
+                v-model:value="state.formData.project_id"
+                placeholder="请选择项目"
+                @change="handleProjectChange"
+              >
+                <Select.Option
+                  v-for="project in state.projectOptions"
+                  :key="project.id"
+                  :value="project.id"
+                >
+                  {{ project.name }}
+                </Select.Option>
               </Select>
             </Form.Item>
           </Col>
           <Col :span="12">
             <Form.Item label="场景状态">
               <Select v-model:value="state.formData.status">
-                <Select.Option value="active">启用中</Select.Option>
                 <Select.Option value="draft">草稿</Select.Option>
+                <Select.Option value="active">启用中</Select.Option>
                 <Select.Option value="inactive">已停用</Select.Option>
+                <Select.Option value="archived">已归档</Select.Option>
               </Select>
             </Form.Item>
           </Col>
@@ -398,73 +204,135 @@
 
         <Form.Item label="场景描述">
           <Input.TextArea
-              v-model:value="state.formData.description"
-              placeholder="描述此场景的用途、测试目标和注意事项..."
-              :rows="4"
+            v-model:value="state.formData.description"
+            placeholder="描述此场景的用途、测试目标和注意事项"
+            :rows="4"
           />
         </Form.Item>
 
         <Form.Item label="测试用例配置" required>
-          <div class="testcase-config-header">
+          <div class="config-header">
             <span>测试用例列表</span>
-            <Button type="dashed" @click="addTestCaseRow" size="small">
+            <Button type="dashed" size="small" @click="addCaseRow" :disabled="!state.formData.project_id">
               <template #icon><PlusOutlined /></template>
               添加用例
             </Button>
           </div>
 
-          <div v-for="(testcase, index) in state.formData.testcases" :key="index" class="testcase-config-row">
+          <div class="config-tips">
+            <span>先选择所属项目，再从该项目下加载并选择用例。</span>
+            <span :class="['weight-total', getWeightTotal() === 100 ? 'is-valid' : 'is-invalid']">
+              当前权重总和 {{ getWeightTotal() }}%
+            </span>
+          </div>
+
+          <div
+            v-for="(caseBind, index) in state.formData.cases"
+            :key="caseBind.row_key"
+            class="case-row"
+          >
             <Row :gutter="8" align="middle">
-              <Col :span="12">
+              <Col :span="2">
+                <div class="sequence-chip">#{{ index + 1 }}</div>
+              </Col>
+              <Col :span="11">
                 <Select
-                    v-model:value="testcase.id"
-                    placeholder="请选择测试用例"
-                    style="width: 100%"
-                    @change="updateWeightTotal"
+                  v-model:value="caseBind.case_id"
+                  :disabled="!state.formData.project_id"
+                  placeholder="请选择测试用例"
+                  style="width: 100%"
                 >
-                  <Select.Option value="">请选择测试用例</Select.Option>
-                  <Select.Option v-for="tc in testCaseOptions" :key="tc.id" :value="tc.id">
-                    {{ tc.name }}
+                  <Select.Option
+                    v-for="testcase in getAvailableCaseOptions(caseBind.case_id)"
+                    :key="testcase.id"
+                    :value="testcase.id"
+                  >
+                    {{ testcase.name }}
                   </Select.Option>
                 </Select>
               </Col>
-              <Col :span="8">
+              <Col :span="6">
                 <InputNumber
-                    v-model:value="testcase.weight"
-                    placeholder="权重%"
-                    :min="1"
-                    :max="100"
-                    style="width: 100%"
-                    @change="updateWeightTotal"
+                  v-model:value="caseBind.weight"
+                  :min="1"
+                  :max="100"
+                  :disabled="!caseBind.case_id"
+                  placeholder="权重"
+                  style="width: 100%"
                 />
               </Col>
-              <Col :span="4">
-                <Button
-                    danger
-                    @click="removeTestCaseRow(index)"
+              <Col :span="5">
+                <Space>
+                  <Button size="small" :disabled="index === 0" @click="moveCaseRow(index, 'up')">
+                    <template #icon><ArrowUpOutlined /></template>
+                  </Button>
+                  <Button
                     size="small"
-                    :disabled="state.formData.testcases.length <= 1"
-                >
-                  <template #icon><DeleteOutlined /></template>
-                </Button>
+                    :disabled="index === state.formData.cases.length - 1"
+                    @click="moveCaseRow(index, 'down')"
+                  >
+                    <template #icon><ArrowDownOutlined /></template>
+                  </Button>
+                  <Button
+                    danger
+                    size="small"
+                    :disabled="state.formData.cases.length <= 1"
+                    @click="removeCaseRow(index)"
+                  >
+                    <template #icon><DeleteOutlined /></template>
+                  </Button>
+                </Space>
               </Col>
             </Row>
           </div>
-
-          <div class="weight-total">
-            提示：所有用例权重总和应为100%，当前总和:
-            <span :style="{ color: state.weightTotal === 100 ? '#52c41a' : '#ff4d4f' }">
-              {{ state.weightTotal }}
-            </span>%
-          </div>
         </Form.Item>
       </Form>
+    </Modal>
+
+    <Modal
+      v-model:open="state.previewVisible"
+      title="场景详情预览"
+      width="760px"
+      :footer="null"
+    >
+      <div v-if="state.previewLoading" class="preview-loading">
+        <a-spin tip="正在加载场景详情..." />
+      </div>
+
+      <Descriptions v-else-if="state.previewData" :column="2" bordered>
+        <DescriptionsItem label="场景ID">{{ state.previewData.id }}</DescriptionsItem>
+        <DescriptionsItem label="场景名称">{{ state.previewData.name }}</DescriptionsItem>
+        <DescriptionsItem label="所属项目">{{ state.previewData.project }}</DescriptionsItem>
+        <DescriptionsItem label="场景状态">
+          <Tag :color="statusMap[state.previewData.status]?.color || 'default'">
+            {{ statusMap[state.previewData.status]?.text || state.previewData.status }}
+          </Tag>
+        </DescriptionsItem>
+        <DescriptionsItem label="创建时间">{{ formatDateTime(state.previewData.created_at) }}</DescriptionsItem>
+        <DescriptionsItem label="最后运行">{{ formatDateTime(state.previewData.last_run) }}</DescriptionsItem>
+        <DescriptionsItem label="场景描述" :span="2">
+          {{ state.previewData.description || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="关联用例" :span="2">
+          <div class="preview-case-list">
+            <div
+              v-for="caseBind in state.previewData.cases"
+              :key="`${caseBind.case_id}-${caseBind.order}`"
+              class="preview-case-item"
+            >
+              <span>{{ getCaseName(caseBind.case_id) }}</span>
+              <span class="subtle-text">顺序 {{ caseBind.order }} / 权重 {{ caseBind.weight }}</span>
+            </div>
+          </div>
+        </DescriptionsItem>
+      </Descriptions>
     </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, h } from 'vue'
+import { onMounted, reactive } from 'vue'
+import dayjs from 'dayjs'
 import {
   Card as ACard,
   Row,
@@ -474,8 +342,6 @@ import {
   Select,
   Table,
   Tag,
-  Avatar,
-  Statistic,
   Modal,
   Form,
   InputNumber,
@@ -485,7 +351,7 @@ import {
   Descriptions,
   DescriptionsItem,
   Tooltip,
-  message
+  message,
 } from 'ant-design-vue'
 import {
   PlusOutlined,
@@ -494,581 +360,418 @@ import {
   EyeOutlined,
   EditOutlined,
   DeleteOutlined,
-  AppstoreOutlined,
-  UnorderedListOutlined,
-  ProjectOutlined,
-  PlayCircleOutlined,
   ApiOutlined,
-  ScheduleOutlined,
   FilterOutlined,
-  CopyOutlined
+  CopyOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
 } from '@ant-design/icons-vue'
+import { ScenarioApi } from '@/api/scenario'
+import { ProjectApi } from '@/api/project'
+import { CaseApi } from '@/api/case'
+import type { ProjectInfo } from '@/types/project'
+import type { CaseInfo } from '@/types/case'
+import type { ScenarioCaseBind, ScenarioInfo } from '@/types/scenario'
 
-// 模拟测试用例数据
-const mockTestCases = [
-  { id: "TC-001", name: "首页加载", description: "模拟用户访问首页" },
-  { id: "TC-002", name: "商品分类浏览", description: "浏览商品分类列表" },
-  { id: "TC-003", name: "轮播图切换", description: "切换首页轮播图" },
-  { id: "TC-004", name: "公告信息获取", description: "获取首页公告信息" },
-  { id: "TC-005", name: "商品详情页", description: "查看商品详细信息" },
-  { id: "TC-006", name: "加入购物车", description: "将商品加入购物车" },
-  { id: "TC-007", name: "购物车结算", description: "购物车页面结算操作" },
-  { id: "TC-008", name: "提交订单", description: "提交订单到系统" },
-  { id: "TC-009", name: "支付流程", description: "完成支付操作" },
-  { id: "TC-010", name: "用户登录", description: "用户登录系统" }
-]
+type FormCaseBind = ScenarioCaseBind & { row_key: string }
 
-// 完整模拟场景数据
-const mockScenarios = [
-  {
-    id: "SCENARIO-001",
-    name: "首页访问场景",
-    project: "电商平台",
-    description: "模拟用户访问电商首页的完整流程，包括页面加载、资源请求和用户交互",
-    status: "active",
-    testcases: [
-      { id: "TC-001", name: "首页加载", weight: 60 },
-      { id: "TC-002", name: "商品分类浏览", weight: 20 },
-      { id: "TC-003", name: "轮播图切换", weight: 10 },
-      { id: "TC-004", name: "公告信息获取", weight: 10 }
-    ],
-    createdAt: "2024-01-20 10:30:00",
-    updatedAt: "2024-01-20 14:15:00",
-    totalTestcases: 4,
-    lastRun: "2024-01-20 11:00:00"
-  },
-  {
-    id: "SCENARIO-002",
-    name: "下单流程场景",
-    project: "电商平台",
-    description: "完整的购物下单流程，从商品选择到支付完成",
-    status: "active",
-    testcases: [
-      { id: "TC-005", name: "商品详情页", weight: 20 },
-      { id: "TC-006", name: "加入购物车", weight: 20 },
-      { id: "TC-007", name: "购物车结算", weight: 20 },
-      { id: "TC-008", name: "提交订单", weight: 20 },
-      { id: "TC-009", name: "支付流程", weight: 20 }
-    ],
-    createdAt: "2024-01-19 09:15:00",
-    updatedAt: "2024-01-19 16:45:00",
-    totalTestcases: 5,
-    lastRun: "2024-01-19 14:00:00"
-  },
-  {
-    id: "SCENARIO-003",
-    name: "用户登录注册场景",
-    project: "用户中心",
-    description: "用户登录、注册、找回密码等核心功能测试",
-    status: "active",
-    testcases: [
-      { id: "TC-010", name: "用户登录", weight: 50 },
-      { id: "TC-011", name: "用户注册", weight: 30 },
-      { id: "TC-012", name: "密码重置", weight: 20 }
-    ],
-    createdAt: "2024-01-18 14:20:00",
-    updatedAt: "2024-01-19 10:30:00",
-    totalTestcases: 3,
-    lastRun: "2024-01-18 15:45:00"
-  },
-  {
-    id: "SCENARIO-004",
-    name: "API网关压力测试",
-    project: "API网关",
-    description: "API网关的高并发场景测试，验证网关的吞吐量和响应时间",
-    status: "draft",
-    testcases: [
-      { id: "TC-013", name: "健康检查接口", weight: 10 },
-      { id: "TC-014", name: "用户信息查询", weight: 30 },
-      { id: "TC-015", name: "订单状态查询", weight: 30 },
-      { id: "TC-016", name: "商品库存查询", weight: 30 }
-    ],
-    createdAt: "2024-01-17 11:10:00",
-    updatedAt: "2024-01-17 16:20:00",
-    totalTestcases: 4,
-    lastRun: null
-  },
-  {
-    id: "SCENARIO-005",
-    name: "支付系统压测场景",
-    project: "支付系统",
-    description: "支付系统的全链路压测，包括支付、退款、查询等核心功能",
-    status: "active",
-    testcases: [
-      { id: "TC-017", name: "发起支付", weight: 40 },
-      { id: "TC-018", name: "支付回调", weight: 30 },
-      { id: "TC-019", name: "退款申请", weight: 20 },
-      { id: "TC-020", name: "交易查询", weight: 10 }
-    ],
-    createdAt: "2024-01-16 09:00:00",
-    updatedAt: "2024-01-16 15:30:00",
-    totalTestcases: 4,
-    lastRun: "2024-01-16 11:10:00"
-  },
-  {
-    id: "SCENARIO-006",
-    name: "搜索性能场景",
-    project: "搜索引擎",
-    description: "商品搜索、筛选、排序等功能的性能测试",
-    status: "inactive",
-    testcases: [
-      { id: "TC-021", name: "关键词搜索", weight: 50 },
-      { id: "TC-022", name: "高级筛选", weight: 30 },
-      { id: "TC-023", name: "搜索结果排序", weight: 20 }
-    ],
-    createdAt: "2024-01-15 13:20:00",
-    updatedAt: "2024-01-16 10:15:00",
-    totalTestcases: 3,
-    lastRun: "2024-01-15 14:30:00"
-  },
-  {
-    id: "SCENARIO-007",
-    name: "图片上传处理场景",
-    project: "内容管理",
-    description: "图片上传、压缩、裁剪、水印等处理流程测试",
-    status: "active",
-    testcases: [
-      { id: "TC-024", name: "图片上传", weight: 40 },
-      { id: "TC-025", name: "图片压缩", weight: 30 },
-      { id: "TC-026", name: "添加水印", weight: 20 },
-      { id: "TC-027", name: "生成缩略图", weight: 10 }
-    ],
-    createdAt: "2024-01-14 10:30:00",
-    updatedAt: "2024-01-15 11:45:00",
-    totalTestcases: 4,
-    lastRun: "2024-01-14 14:00:00"
-  },
-  {
-    id: "SCENARIO-008",
-    name: "消息队列消费场景",
-    project: "消息中间件",
-    description: "消息的生产、消费、重试、死信队列等场景测试",
-    status: "draft",
-    testcases: [
-      { id: "TC-028", name: "消息生产", weight: 40 },
-      { id: "TC-029", name: "消息消费", weight: 40 },
-      { id: "TC-030", name: "消息重试", weight: 20 }
-    ],
-    createdAt: "2024-01-13 16:00:00",
-    updatedAt: "2024-01-14 09:30:00",
-    totalTestcases: 3,
-    lastRun: null
-  }
-]
+const createDefaultCaseRow = (): FormCaseBind => ({
+  row_key: crypto.randomUUID(),
+  case_id: undefined as unknown as number,
+  order: 1,
+  weight: 100,
+})
 
-// 响应式数据
+const createDefaultFormData = () => ({
+  name: '',
+  project_id: undefined as number | undefined,
+  project: '',
+  status: 'draft',
+  description: '',
+  cases: [createDefaultCaseRow()],
+})
+
 const state = reactive({
-  scenarios: [...mockScenarios],
-  filteredScenarios: [...mockScenarios],
+  scenarios: [] as ScenarioInfo[],
+  projectOptions: [] as ProjectInfo[],
+  caseOptions: [] as CaseInfo[],
   currentPage: 1,
   pageSize: 8,
-  viewMode: 'table', // 'card' 或 'table'
-  searchFilters: {
-    name: '',
-    project: '',
-    status: '',
-    time: ''
-  },
+  total: 0,
+  listLoading: false,
+  submitLoading: false,
   modalVisible: false,
   modalTitle: '创建新场景',
-  modalLoading: false,
   isEditing: false,
-  currentEditId: null,
-  weightTotal: 0,
-  formData: {
+  currentEditId: null as number | null,
+  previewVisible: false,
+  previewLoading: false,
+  previewData: null as ScenarioInfo | null,
+  searchFilters: {
     name: '',
-    project: '',
-    status: 'active',
-    description: '',
-    testcases: [{ id: '', weight: 20 }] as Array<{id: string, weight: number}>
-  }
+    project_id: undefined as number | undefined,
+    status: '',
+  },
+  formData: createDefaultFormData(),
 })
 
-// 计算属性
-const statistics = computed(() => {
-  const total = state.scenarios.length
-  const active = state.scenarios.filter(s => s.status === 'active').length
-
-  let totalTestcases = 0
-  let totalRuns = 0
-
-  state.scenarios.forEach(s => {
-    totalTestcases += s.totalTestcases
-    if (s.lastRun) totalRuns++
-  })
-
-  return { total, active, totalTestcases, totalRuns }
-})
-
-const paginatedScenarios = computed(() => {
-  const start = (state.currentPage - 1) * state.pageSize
-  const end = start + state.pageSize
-  return state.filteredScenarios.slice(start, end)
-})
-
-const projectOptions = computed(() => {
-  const projects = Array.from(new Set(state.scenarios.map(s => s.project)))
-  return projects.sort()
-})
-
-const testCaseOptions = computed(() => {
-  return mockTestCases
-})
-
-// 状态映射
-const statusMap: Record<string, { text: string, color: string }> = {
+const statusMap: Record<string, { text: string; color: string }> = {
+  draft: { text: '草稿', color: 'default' },
   active: { text: '启用中', color: 'green' },
-  draft: { text: '草稿', color: 'orange' },
-  inactive: { text: '已停用', color: 'gray' }
+  inactive: { text: '已停用', color: 'orange' },
+  archived: { text: '已归档', color: 'purple' },
 }
 
-// 表格列定义
 const columns = [
-  {
-    title: '场景ID',
-    dataIndex: 'id',
-    key: 'id',
-    width: 100
-  },
-  {
-    title: '场景名称',
-    dataIndex: 'name',
-    key: 'name',
-    width: 180
-  },
-  {
-    title: '所属项目',
-    dataIndex: 'project',
-    key: 'project',
-    width: 120
-  },
-  {
-    title: '测试用例',
-    key: 'testcases',
-    width: 200
-  },
-  {
-    title: '描述',
-    dataIndex: 'description',
-    key: 'description',
-    width: 200,
-    ellipsis: true
-  },
-  {
-    title: '状态',
-    dataIndex: 'status',
-    key: 'status',
-    width: 100
-  },
-  {
-    title: '创建时间',
-    dataIndex: 'createdAt',
-    key: 'createdAt',
-    width: 140,
-    customRender: ({ text }: { text: string }) => text.split(' ')[0]
-  },
-  {
-    title: '最后修改',
-    dataIndex: 'updatedAt',
-    key: 'updatedAt',
-    width: 140,
-    customRender: ({ text }: { text: string }) => text.split(' ')[0]
-  },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 180,
-    fixed: 'right'
-  }
+  { title: '场景ID', dataIndex: 'id', key: 'id', width: 120 },
+  { title: '场景名称', dataIndex: 'name', key: 'name', width: 180 },
+  { title: '所属项目', dataIndex: 'project', key: 'project', width: 140 },
+  { title: '测试用例', key: 'cases', width: 240 },
+  { title: '描述', dataIndex: 'description', key: 'description', width: 220, ellipsis: true },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 110 },
+  { title: '创建时间', key: 'created_at', width: 180 },
+  { title: '最后运行', key: 'last_run', width: 180 },
+  { title: '操作', key: 'actions', width: 180, fixed: 'right' },
 ]
 
-// 方法
-const applyFilters = () => {
-  const { name, project, status, time } = state.searchFilters
-
-  state.filteredScenarios = state.scenarios.filter(scenario => {
-    // 名称筛选
-    if (name &&
-        !scenario.name.toLowerCase().includes(name.toLowerCase()) &&
-        !scenario.description.toLowerCase().includes(name.toLowerCase())) {
-      return false
-    }
-
-    // 项目筛选
-    if (project && scenario.project !== project) {
-      return false
-    }
-
-    // 状态筛选
-    if (status && scenario.status !== status) {
-      return false
-    }
-
-    // 时间筛选
-    if (time) {
-      const scenarioDate = new Date(scenario.createdAt.split(' ')[0])
-      const now = new Date()
-
-      if (time === 'today') {
-        const today = now.toISOString().split('T')[0]
-        const scenarioDateStr = scenarioDate.toISOString().split('T')[0]
-        if (scenarioDateStr !== today) return false
-      } else if (time === 'week') {
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-        if (scenarioDate < weekAgo) return false
-      } else if (time === 'month') {
-        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-        if (scenarioDate < monthAgo) return false
-      }
-    }
-
-    return true
-  })
-
-  state.currentPage = 1
+const formatDateTime = (value?: string | null) => {
+  if (!value || !dayjs(value).isValid()) {
+    return '-'
+  }
+  return dayjs(value).format('YYYY-MM-DD HH:mm:ss')
 }
 
-const resetFilters = () => {
+const getCaseName = (caseId: number) => {
+  return state.caseOptions.find(item => item.id === caseId)?.name || `用例 ${caseId}`
+}
+
+const syncCaseMeta = () => {
+  state.formData.cases = state.formData.cases.map((item, index) => {
+    return {
+      ...item,
+      order: index + 1,
+    }
+  })
+}
+
+const rebalanceCaseWeights = () => {
+  const total = state.formData.cases.length || 1
+  const baseWeight = Math.floor(100 / total)
+  let remainder = 100 - baseWeight * total
+
+  state.formData.cases = state.formData.cases.map(item => {
+    const extra = remainder > 0 ? 1 : 0
+    remainder -= extra
+    return {
+      ...item,
+      weight: baseWeight + extra,
+    }
+  })
+}
+
+const getWeightTotal = () => {
+  return state.formData.cases.reduce((sum, item) => sum + (Number(item.weight) || 0), 0)
+}
+
+const getAvailableCaseOptions = (currentCaseId?: number) => {
+  const selectedIds = state.formData.cases
+    .map(item => item.case_id)
+    .filter((id): id is number => Boolean(id) && id !== currentCaseId)
+
+  return state.caseOptions.filter(item => !selectedIds.includes(item.id) || item.id === currentCaseId)
+}
+
+const getCaseSummary = (cases: ScenarioCaseBind[]) => {
+  if (!cases?.length) {
+    return '暂无关联用例'
+  }
+  return cases
+    .slice(0, 2)
+    .map(item => `${getCaseName(item.case_id)}(${item.weight})`)
+    .join('，') + (cases.length > 2 ? ' ...' : '')
+}
+
+const normalizeScenario = (scenario: ScenarioInfo): ScenarioInfo => ({
+  ...scenario,
+  status: scenario.status?.toLowerCase() || 'draft',
+  cases: Array.isArray(scenario.cases) ? scenario.cases : [],
+})
+
+const fetchProjectOptions = async () => {
+  const response = await ProjectApi.getProjectList({ page: 1, page_size: 200 })
+  state.projectOptions = response.data.results
+}
+
+const fetchCaseOptions = async (projectId?: number) => {
+  if (!projectId) {
+    state.caseOptions = []
+    return
+  }
+  const response = await CaseApi.getCaseList({
+    page: 1,
+    page_size: 200,
+    project_id: projectId,
+  })
+  state.caseOptions = response.data.results
+}
+
+const fetchScenarioList = async () => {
+  state.listLoading = true
+  try {
+    const response = await ScenarioApi.getScenarioList({
+      page: state.currentPage,
+      page_size: state.pageSize,
+      name: state.searchFilters.name || undefined,
+      project_id: state.searchFilters.project_id,
+      status: state.searchFilters.status || undefined,
+    })
+    state.scenarios = response.data.results.map(normalizeScenario)
+    state.total = response.data.total
+  } catch (error) {
+    console.error('获取场景列表失败:', error)
+    message.error('场景列表加载失败，请稍后重试')
+  } finally {
+    state.listLoading = false
+  }
+}
+
+const applyFilters = async () => {
+  state.currentPage = 1
+  await fetchScenarioList()
+}
+
+const resetFilters = async () => {
   state.searchFilters = {
     name: '',
-    project: '',
+    project_id: undefined,
     status: '',
-    time: ''
   }
-  state.filteredScenarios = [...state.scenarios]
   state.currentPage = 1
+  await fetchScenarioList()
 }
 
-const switchView = (mode: string) => {
-  state.viewMode = mode
+const handlePageChange = async (page: number, pageSize: number) => {
+  state.currentPage = page
+  state.pageSize = pageSize
+  await fetchScenarioList()
 }
 
-const showAddModal = () => {
+const handleProjectChange = async (projectId: number) => {
+  const project = state.projectOptions.find(item => item.id === projectId)
+  state.formData.project_id = project?.id
+  state.formData.project = project?.name || ''
+  state.formData.cases = [createDefaultCaseRow()]
+  syncCaseMeta()
+  await fetchCaseOptions(projectId)
+}
+
+const addCaseRow = () => {
+  state.formData.cases.push(createDefaultCaseRow())
+  syncCaseMeta()
+  rebalanceCaseWeights()
+}
+
+const removeCaseRow = (index: number) => {
+  state.formData.cases.splice(index, 1)
+  syncCaseMeta()
+  rebalanceCaseWeights()
+}
+
+const moveCaseRow = (index: number, direction: 'up' | 'down') => {
+  const targetIndex = direction === 'up' ? index - 1 : index + 1
+  if (targetIndex < 0 || targetIndex >= state.formData.cases.length) {
+    return
+  }
+  const [current] = state.formData.cases.splice(index, 1)
+  state.formData.cases.splice(targetIndex, 0, current)
+  syncCaseMeta()
+}
+
+const showAddModal = async () => {
   state.modalTitle = '创建新场景'
   state.isEditing = false
   state.currentEditId = null
-  state.formData = {
-    name: '',
-    project: '',
-    status: 'active',
-    description: '',
-    testcases: [{ id: '', weight: 20 }]
-  }
+  state.formData = createDefaultFormData()
   state.modalVisible = true
-  updateWeightTotal()
+  syncCaseMeta()
+  state.caseOptions = []
 }
 
-const showEditModal = (scenarioId: string) => {
-  const scenario = state.scenarios.find(s => s.id === scenarioId)
-  if (!scenario) return
-
-  state.modalTitle = '编辑场景'
-  state.isEditing = true
-  state.currentEditId = scenarioId
-  state.formData = {
-    name: scenario.name,
-    project: scenario.project,
-    status: scenario.status,
-    description: scenario.description,
-    testcases: scenario.testcases.map(tc => ({
-      id: tc.id,
-      weight: tc.weight
-    }))
+const showEditModal = async (scenarioId: number) => {
+  try {
+    const response = await ScenarioApi.getScenarioInfo({ id: scenarioId })
+    const scenario = normalizeScenario(response.data)
+    state.modalTitle = '编辑场景'
+    state.isEditing = true
+    state.currentEditId = scenarioId
+    state.formData = {
+      name: scenario.name,
+      project_id: scenario.project_id,
+      project: scenario.project,
+      status: scenario.status,
+      description: scenario.description || '',
+      cases: scenario.cases.length
+        ? scenario.cases.map(item => ({ ...item, row_key: crypto.randomUUID() }))
+        : [createDefaultCaseRow()],
+    }
+    syncCaseMeta()
+    state.modalVisible = true
+    await fetchCaseOptions(scenario.project_id)
+  } catch (error) {
+    console.error('获取场景详情失败:', error)
+    message.error('场景详情加载失败，请稍后重试')
   }
-  state.modalVisible = true
-  updateWeightTotal()
 }
 
-const handleModalOk = () => {
-  const { name, project, status, description, testcases } = state.formData
-
-  // 验证
-  if (!name.trim()) {
+const validateForm = () => {
+  if (!state.formData.name.trim()) {
     message.error('请输入场景名称')
-    return
+    return false
   }
-
-  if (!project) {
+  if (!state.formData.project_id || !state.formData.project) {
     message.error('请选择所属项目')
+    return false
+  }
+
+  const validCases = state.formData.cases.filter(item => item.case_id)
+  if (!validCases.length) {
+    message.error('请至少选择一个测试用例')
+    return false
+  }
+  if (new Set(validCases.map(item => item.case_id)).size !== validCases.length) {
+    message.error('同一个场景中不能重复添加相同用例')
+    return false
+  }
+  if (getWeightTotal() !== 100) {
+    message.error('用例权重总和必须为 100%')
+    return false
+  }
+  return true
+}
+
+const buildCasesPayload = () =>
+  state.formData.cases
+    .filter(item => item.case_id)
+    .map(({ case_id, order, weight }) => ({
+      case_id,
+      order,
+      weight,
+    }))
+
+const handleModalOk = async () => {
+  if (!validateForm()) {
     return
   }
 
-  // 验证测试用例
-  const validTestcases = testcases.filter(tc => tc.id && tc.weight)
-  if (validTestcases.length === 0) {
-    message.error('请至少配置一个测试用例')
-    return
-  }
-
-  // 计算权重总和
-  const totalWeight = validTestcases.reduce((sum, tc) => sum + tc.weight, 0)
-  if (totalWeight !== 100) {
-    message.error(`测试用例权重总和应为100%，当前为${totalWeight}%`)
-    return
-  }
-
-  state.modalLoading = true
-
-  setTimeout(() => {
-    const now = new Date().toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    })
+  state.submitLoading = true
+  try {
+    const payload = {
+      name: state.formData.name.trim(),
+      project_id: state.formData.project_id!,
+      project: state.formData.project,
+      description: state.formData.description || undefined,
+      cases: buildCasesPayload(),
+    }
 
     if (state.isEditing && state.currentEditId) {
-      // 编辑场景
-      const index = state.scenarios.findIndex(s => s.id === state.currentEditId)
-      if (index !== -1) {
-        const testcaseDetails = validTestcases.map(tc => {
-          const testcase = mockTestCases.find(mtc => mtc.id === tc.id)
-          return {
-            id: tc.id,
-            name: testcase ? testcase.name : '未知用例',
-            weight: tc.weight
-          }
-        })
-
-        state.scenarios[index] = {
-          ...state.scenarios[index],
-          name,
-          project,
-          status,
-          description,
-          testcases: testcaseDetails,
-          totalTestcases: testcaseDetails.length,
-          updatedAt: now
-        }
-
-        message.success(`场景 ${name} 已更新`)
-      }
-    } else {
-      // 新增场景
-      const newId = `SCENARIO-${String(state.scenarios.length + 1).padStart(3, '0')}`
-
-      const testcaseDetails = validTestcases.map(tc => {
-        const testcase = mockTestCases.find(mtc => mtc.id === tc.id)
-        return {
-          id: tc.id,
-          name: testcase ? testcase.name : '未知用例',
-          weight: tc.weight
-        }
+      await ScenarioApi.updateScenario({
+        id: state.currentEditId,
+        ...payload,
+        status: state.formData.status,
       })
-
-      const newScenario = {
-        id: newId,
-        name,
-        project,
-        description,
-        status,
-        testcases: testcaseDetails,
-        createdAt: now,
-        updatedAt: now,
-        totalTestcases: testcaseDetails.length,
-        lastRun: null
+      message.success('场景已更新')
+    } else {
+      const response = await ScenarioApi.createScenario(payload)
+      if (state.formData.status !== 'draft') {
+        await ScenarioApi.updateScenario({
+          id: response.data.id,
+          status: state.formData.status,
+        })
       }
-
-      state.scenarios.unshift(newScenario)
-      message.success(`场景 ${name} 已创建`)
+      message.success('场景已创建')
     }
 
     state.modalVisible = false
-    state.modalLoading = false
-    resetFilters() // 重置筛选以显示新数据
-  }, 500)
-}
-
-const addTestCaseRow = () => {
-  state.formData.testcases.push({ id: '', weight: 20 })
-  updateWeightTotal()
-}
-
-const removeTestCaseRow = (index: number) => {
-  if (state.formData.testcases.length > 1) {
-    state.formData.testcases.splice(index, 1)
-    updateWeightTotal()
+    await fetchScenarioList()
+  } catch (error) {
+    console.error('保存场景失败:', error)
+    message.error('保存场景失败，请稍后重试')
+  } finally {
+    state.submitLoading = false
   }
 }
 
-const updateWeightTotal = () => {
-  state.weightTotal = state.formData.testcases.reduce((sum, tc) => sum + (tc.weight || 0), 0)
+const handleModalCancel = () => {
+  state.modalVisible = false
 }
 
-const runScenario = (scenarioId: string) => {
-  const scenario = state.scenarios.find(s => s.id === scenarioId)
-  if (scenario) {
-    message.info(`运行场景: ${scenario.name} - 在实际系统中会跳转到任务创建页面`)
+const previewScenario = async (scenarioId: number) => {
+  state.previewVisible = true
+  state.previewLoading = true
+  try {
+    const response = await ScenarioApi.getScenarioInfo({ id: scenarioId })
+    state.previewData = normalizeScenario(response.data)
+  } catch (error) {
+    console.error('获取场景详情失败:', error)
+    message.error('场景详情加载失败，请稍后重试')
+    state.previewVisible = false
+  } finally {
+    state.previewLoading = false
   }
 }
 
-const copyScenario = (scenarioId: string) => {
-  const scenario = state.scenarios.find(s => s.id === scenarioId)
-  if (scenario) {
-    Modal.confirm({
-      title: '确认复制',
-      content: `确定要复制场景 "${scenario.name}" 吗？`,
-      onOk() {
-        const newId = `SCENARIO-${String(state.scenarios.length + 1).padStart(3, '0')}`
-        const now = new Date().toLocaleString('zh-CN', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit'
-        })
-
-        const copiedScenario = {
-          ...scenario,
-          id: newId,
-          name: `${scenario.name} (副本)`,
-          createdAt: now,
-          updatedAt: now,
-          lastRun: null
-        }
-
-        state.scenarios.unshift(copiedScenario)
-        resetFilters()
-        message.success(`场景 "${scenario.name}" 已复制为 "${copiedScenario.name}"`)
-      }
+const copyScenario = async (scenarioId: number) => {
+  try {
+    const response = await ScenarioApi.getScenarioInfo({ id: scenarioId })
+    const scenario = normalizeScenario(response.data)
+    const createResponse = await ScenarioApi.createScenario({
+      name: `${scenario.name} (副本)`,
+      project_id: scenario.project_id,
+      project: scenario.project,
+      description: scenario.description || undefined,
+      cases: scenario.cases,
     })
+    if (scenario.status !== 'draft') {
+      await ScenarioApi.updateScenario({ id: createResponse.data.id, status: scenario.status })
+    }
+    message.success(`场景 "${scenario.name}" 已复制`)
+    await fetchScenarioList()
+  } catch (error) {
+    console.error('复制场景失败:', error)
+    message.error('复制场景失败，请稍后重试')
   }
 }
 
-const deleteScenario = (scenarioId: string) => {
-  const scenario = state.scenarios.find(s => s.id === scenarioId)
-  if (scenario) {
-    Modal.confirm({
-      title: '确认删除',
-      content: `确定要删除场景 "${scenario.name}" 吗？此操作不可恢复。`,
-      okText: '删除',
-      okType: 'danger',
-      onOk() {
-        const index = state.scenarios.findIndex(s => s.id === scenarioId)
-        if (index !== -1) {
-          state.scenarios.splice(index, 1)
-          resetFilters()
-          message.success(`场景 "${scenario.name}" 已删除`)
-        }
-      }
-    })
+const deleteScenario = async (scenarioId: number) => {
+  const scenario = state.scenarios.find(item => item.id === scenarioId)
+  if (!scenario) {
+    return
   }
+
+  Modal.confirm({
+    title: '确认删除',
+    content: `确定要删除场景 "${scenario.name}" 吗？此操作不可恢复。`,
+    okType: 'danger',
+    async onOk() {
+      await ScenarioApi.deleteScenario({ id: scenarioId })
+      message.success(`场景 "${scenario.name}" 已删除`)
+      await fetchScenarioList()
+    },
+  })
 }
 
-onMounted(() => {
-  // 初始化数据
-  resetFilters()
-  updateWeightTotal()
+onMounted(async () => {
+  await fetchProjectOptions()
+  await fetchScenarioList()
 })
 </script>
 
 <style scoped>
 .app-container {
   padding: 10px;
-  //min-height: 100vh;
+  min-height: calc(100vh - 64px);
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .page-header {
@@ -1097,113 +800,88 @@ onMounted(() => {
   margin: 8px 0 0 0;
 }
 
-.stats-row {
-  margin-bottom: 20px;
-}
-
 .filter-card {
   margin-bottom: 20px;
 }
 
-.scenario-card {
-  padding: 20px 0;
-  margin-bottom: 20px;
-  height: 100%;
+.pagination-container {
+  margin-top: 20px;
+  text-align: right;
 }
 
-.scenario-card-header {
+.config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 12px;
 }
 
-.scenario-name {
-  font-size: 16px;
+.config-tips {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.case-row {
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border: 1px solid #edf2fa;
+  border-radius: 12px;
+  background: #fcfdff;
+}
+
+.sequence-chip {
+  height: 32px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
   font-weight: 600;
-  margin: 0 0 4px 0;
-  color: rgba(0, 0, 0, 0.85);
 }
 
-.scenario-id {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
-  margin-bottom: 8px;
+.sequence-chip {
+  background: #eef4ff;
+  color: #1677ff;
 }
 
-.scenario-description {
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.65);
-  line-height: 1.5;
-  margin-bottom: 12px;
+.weight-total {
+  font-weight: 600;
 }
 
-.scenario-meta {
-  background-color: #fafafa;
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 16px;
+.weight-total.is-valid {
+  color: #389e0d;
 }
 
-.meta-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
+.weight-total.is-invalid {
+  color: #cf1322;
 }
 
-.meta-item:last-child {
-  margin-bottom: 0;
-}
-
-.meta-label {
+.subtle-text {
   font-size: 12px;
   color: rgba(0, 0, 0, 0.45);
 }
 
-.meta-value {
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.85);
-  font-weight: 500;
+.preview-loading {
+  min-height: 220px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
 }
 
-.testcases-preview {
-  margin-bottom: 16px;
-}
-
-.testcases-title {
+.preview-case-list {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.testcases-count {
-  font-size: 12px;
-}
-
-.testcases-list {
-  margin-top: 8px;
-}
-
-.testcase-item {
+.preview-case-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.testcase-item:last-child {
-  border-bottom: none;
-}
-
-.testcase-name {
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.85);
-}
-
-.testcase-weight {
-  font-size: 12px;
+  gap: 12px;
 }
 
 .empty-state {
@@ -1229,39 +907,9 @@ onMounted(() => {
   margin: 0 auto 16px;
 }
 
-.pagination-container {
-  margin-top: 20px;
-  text-align: right;
-}
-
-.testcase-config-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.testcase-config-row {
-  margin-bottom: 12px;
-}
-
-.weight-total {
-  margin-top: 8px;
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.65);
-}
-
 @media (max-width: 768px) {
   .page-header {
     flex-direction: column;
-  }
-
-  .stats-row .ant-col {
-    margin-bottom: 16px;
-  }
-
-  .scenario-card {
-    margin-bottom: 16px;
   }
 }
 </style>

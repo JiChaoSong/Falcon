@@ -8,7 +8,6 @@
     Desc  :     
 --------------------------------------
 """
-from ecdsa.test_keys import data
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
@@ -87,7 +86,7 @@ async def list_users(data: schemas.UserInfoListQuery, db: Session = Depends(get_
     return SuccessResponse(data=users)
 
 @router.post('/detail', response_model=schemas.UserInfoOne)
-async def get_user_info(data:schemas.GetUserInfo, db: Session = Depends(get_db)):
+async def get_user_detail(data:schemas.GetUserInfo, db: Session = Depends(get_db)):
 
     user_service = UserService(db=db)
 
@@ -103,6 +102,24 @@ async def delete_user(data:schemas.GetUserInfo, db: Session = Depends(get_db)):
     user_service.delete(**data.model_dump())
 
     return SuccessResponse(data=None)
+
+@router.post('/reset-password', response_model=schemas.BaseResponse)
+async def reset_password(data: schemas.ResetUserPassword, db: Session = Depends(get_db)):
+
+    user_service = UserService(db=db)
+
+    user_service.reset_password(data.id, data.password)
+
+    return SuccessResponse(data=None)
+
+@router.post('/options', response_model=schemas.UserOptionListResponse)
+async def user_options(db: Session = Depends(get_db)):
+
+    user_service = UserService(db=db)
+
+    users = user_service.options()
+
+    return SuccessResponse(data=users)
 
 @router.post('/info', response_model=schemas.UserInfoOne)
 async def get_user_info(request: Request, db: Session = Depends(get_db)):

@@ -16,7 +16,7 @@ async def scenario_list(data:schemas.QueryScenarioList, db: Session = Depends(ge
 
     scenario_service = ScenarioService(db)
 
-    scenarios = scenario_service.list(**data.model_dump())
+    scenarios = scenario_service.list(**data.model_dump(mode="json"))
 
     return SuccessResponse(data=scenarios)
 
@@ -44,7 +44,7 @@ async def scenario_create(data: schemas.ScenarioCreate, db: Session = Depends(ge
 
     scenario_service = ScenarioService(db)
 
-    scenarios = scenario_service.create(**data.model_dump())
+    scenarios = scenario_service.create(data)
 
     return SuccessResponse(data=scenarios)
 
@@ -53,6 +53,6 @@ async def scenario_update(data: schemas.ScenarioUpdate, db: Session = Depends(ge
 
     scenario_service = ScenarioService(db)
 
-    scenarios = scenario_service.update(**data.model_dump())
+    scenarios = scenario_service.update(data)
 
     return SuccessResponse(data=scenarios)

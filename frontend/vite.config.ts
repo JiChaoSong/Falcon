@@ -34,7 +34,6 @@ export default defineConfig(({ mode }) => {
         dts: 'src/auto-imports.d.ts',
         dirs: [
           'src/composables',
-          'src/store',
         ],
         vueTemplate: true,
         eslintrc: {

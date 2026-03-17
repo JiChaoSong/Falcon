@@ -1,152 +1,77 @@
 <template>
-  <div class="task-management-container">
-    <!-- 页面标题和操作 -->
+  <div class="app-container">
     <div class="page-header">
       <div class="page-title-section">
         <h1 class="page-title">任务管理</h1>
-        <p class="page-subtitle">压测任务创建、启停控制、状态查看、日志溯源，承接场景配置执行压测</p>
+        <p class="page-subtitle">维护压测任务、执行参数和关联场景，为后续执行与监控提供任务入口。</p>
       </div>
 
-      <Space>
-        <!-- 视图切换 -->
-        <Button.Group>
-          <Button
-              :type="state.viewMode === 'card' ? 'primary' : 'default'"
-              @click="switchView('card')"
-          >
-            <template #icon><AppstoreOutlined /></template>
-            卡片视图
-          </Button>
-          <Button
-              :type="state.viewMode === 'table' ? 'primary' : 'default'"
-              @click="switchView('table')"
-          >
-            <template #icon><UnorderedListOutlined /></template>
-            表格视图
-          </Button>
-        </Button.Group>
-
-        <!-- 新增任务按钮 -->
-        <Button type="primary" @click="showAddModal">
-          <template #icon><PlusOutlined /></template>
-          新增任务
-        </Button>
-      </Space>
+      <Button type="primary" @click="showAddModal">
+        <template #icon><PlusOutlined /></template>
+        新增任务
+      </Button>
     </div>
 
-    <!-- 统计卡片 -->
-    <Row :gutter="16" class="stats-row" v-show="false">
-      <Col :span="6">
-        <ACard>
-          <Statistic
-              title="任务总数"
-              :value="statistics.total"
-              :value-style="{ color: '#1890ff', fontSize: '24px' }"
-          >
-            <template #prefix><ScheduleOutlined /></template>
-            <template #suffix>
-              <span style="font-size: 12px; color: #666">今日 +5</span>
-            </template>
-          </Statistic>
-        </ACard>
-      </Col>
-      <Col :span="6">
-        <ACard>
-          <Statistic
-              title="运行中"
-              :value="statistics.running"
-              :value-style="{ color: '#52c41a', fontSize: '24px' }"
-          >
-            <template #prefix><PlayCircleOutlined /></template>
-            <template #suffix>
-              <span style="font-size: 12px; color: #666">实时监控</span>
-            </template>
-          </Statistic>
-        </ACard>
-      </Col>
-      <Col :span="6">
-        <ACard>
-          <Statistic
-              title="成功率"
-              :value="statistics.successRate"
-              :value-style="{ color: '#13c2c2', fontSize: '24px' }"
-              suffix="%"
-          >
-            <template #prefix><CheckCircleOutlined /></template>
-            <template #suffix>
-              <span style="font-size: 12px; color: #666">整体指标</span>
-            </template>
-          </Statistic>
-        </ACard>
-      </Col>
-      <Col :span="6">
-        <ACard>
-          <Statistic
-              title="总耗时"
-              :value="statistics.totalDuration"
-              :value-style="{ color: '#faad14', fontSize: '24px' }"
-              suffix="小时"
-          >
-            <template #prefix><ClockCircleOutlined /></template>
-            <template #suffix>
-              <span style="font-size: 12px; color: #666">累计压测</span>
-            </template>
-          </Statistic>
-        </ACard>
-      </Col>
-    </Row>
-
-    <!-- 筛选区域 -->
     <ACard title="任务筛选" class="filter-card">
       <template #extra><FilterOutlined /></template>
 
       <Row :gutter="16">
         <Col :span="6">
           <Input
-              v-model:value="state.searchFilters.name"
-              placeholder="输入任务名称关键字"
-              allow-clear
-              @pressEnter="applyFilters"
+            v-model:value="state.searchFilters.name"
+            placeholder="输入任务名称"
+            allow-clear
+            @pressEnter="applyFilters"
           />
         </Col>
         <Col :span="6">
           <Select
-              v-model:value="state.searchFilters.status"
-              placeholder="任务状态"
-              allow-clear
-              style="width: 100%"
+            v-model:value="state.searchFilters.status"
+            placeholder="任务状态"
+            allow-clear
+            style="width: 100%"
           >
             <Select.Option value="">全部状态</Select.Option>
-            <Select.Option value="running">运行中</Select.Option>
+            <Select.Option value="pending">待执行</Select.Option>
+            <Select.Option value="running">执行中</Select.Option>
             <Select.Option value="completed">已完成</Select.Option>
-            <Select.Option value="stopped">已停止</Select.Option>
-            <Select.Option value="failed">失败</Select.Option>
-            <Select.Option value="scheduled">已计划</Select.Option>
+            <Select.Option value="failed">执行失败</Select.Option>
+            <Select.Option value="canceled">已取消</Select.Option>
           </Select>
         </Col>
         <Col :span="6">
           <Select
-              v-model:value="state.searchFilters.project"
-              placeholder="所属项目"
-              allow-clear
-              style="width: 100%"
+            v-model:value="state.searchFilters.project_id"
+            placeholder="所属项目"
+            allow-clear
+            style="width: 100%"
+            @change="handleFilterProjectChange"
           >
-            <Select.Option value="">全部项目</Select.Option>
-            <Select.Option v-for="project in projectOptions" :key="project.value" :value="project.value">
-              {{ project.label }}
+            <Select.Option :value="undefined">全部项目</Select.Option>
+            <Select.Option
+              v-for="project in state.projectOptions"
+              :key="project.id"
+              :value="project.id"
+            >
+              {{ project.name }}
             </Select.Option>
           </Select>
         </Col>
         <Col :span="6">
           <Select
-              v-model:value="state.searchFilters.scenario"
-              placeholder="所属场景"
-              allow-clear
-              style="width: 100%"
+            v-model:value="state.searchFilters.scenario_id"
+            :placeholder="state.searchFilters.project_id ? '所属场景' : '请先选择项目'"
+            :disabled="!state.searchFilters.project_id"
+            allow-clear
+            style="width: 100%"
           >
-            <Select.Option value="">全部场景</Select.Option>
-            <Select.Option v-for="scenario in scenarioOptions" :key="scenario.value" :value="scenario.value">
-              {{ scenario.label }}
+            <Select.Option :value="undefined">全部场景</Select.Option>
+            <Select.Option
+              v-for="scenario in state.scenarioFilterOptions"
+              :key="scenario.id"
+              :value="scenario.id"
+            >
+              {{ scenario.name }}
             </Select.Option>
           </Select>
         </Col>
@@ -170,253 +95,158 @@
       </Row>
     </ACard>
 
-    <!-- 任务展示区域 -->
-    <div v-if="state.viewMode === 'card'">
-      <!-- 卡片视图 -->
-      <Row :gutter="[16, 16]" v-if="paginatedTasks.length > 0">
-        <Col :span="8" v-for="task in paginatedTasks" :key="task.id">
-          <ACard class="task-card" hoverable>
-            <template #title>
-              <div class="task-card-header">
-                <h3 class="task-name">{{ task.name }}</h3>
-                <div class="task-id">{{ task.id }}</div>
-              </div>
-            </template>
+    <ACard>
+      <Table
+        :columns="columns"
+        :data-source="state.tasks"
+        :pagination="false"
+        :loading="state.listLoading"
+        row-key="id"
+        :scroll="{ x: 1400 }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'status'">
+            <Tag :color="statusMap[record.status]?.color || 'default'">
+              {{ statusMap[record.status]?.text || record.status }}
+            </Tag>
+          </template>
 
-            <template #extra>
-              <Tag :color="statusMap[task.status].color">
-                {{ statusMap[task.status].text }}
-              </Tag>
-            </template>
+          <template v-if="column.key === 'owner'">
+            <Space>
+              <Avatar size="small" style="background-color: #1677ff">
+                {{ (record.owner || '?').charAt(0) }}
+              </Avatar>
+              <span>{{ record.owner }}</span>
+            </Space>
+          </template>
 
-            <div class="task-description">执行场景: {{ task.scenario }}</div>
-
-            <div class="task-tags">
-              <Tag color="blue" size="small">{{ task.project }}</Tag>
-              <Tag color="cyan" size="small">用户数: {{ task.params.users }}</Tag>
-              <Tag color="orange" size="small">时长: {{ task.params.duration || '无限' }}分钟</Tag>
-            </div>
-
-            <div class="task-meta">
-              <div class="meta-item">
-                <span class="meta-label">负责人</span>
-                <div class="meta-value">
-                  <Avatar size="small" style="backgroundColor: #1890ff">
-                    {{ task.owner.charAt(0) }}
-                  </Avatar>
-                  {{ task.owner }}
-                </div>
-              </div>
-
-              <div class="meta-item">
-                <span class="meta-label">创建时间</span>
-                <div class="meta-value">{{ task.createdAt }}</div>
-              </div>
-
-              <div class="meta-item">
-                <span class="meta-label">开始时间</span>
-                <div class="meta-value">{{ task.startedAt || '—' }}</div>
-              </div>
-
-              <div class="meta-item">
-                <span class="meta-label">结束时间</span>
-                <div class="meta-value">{{ task.endedAt || '—' }}</div>
+          <template v-if="column.key === 'scenarios'">
+            <div>
+              <div>{{ record.scenarios.length }} 个场景</div>
+              <div class="subtle-text">
+                {{ record.scenarios.slice(0, 2).map(item => item.scenario).join('，') || '暂无场景' }}
+                <template v-if="record.scenarios.length > 2"> ...</template>
               </div>
             </div>
+          </template>
 
-            <div class="task-performance">
-              <div class="performance-item">
-                <div class="performance-value" style="color: #52c41a;">
-                  {{ task.params.users }}
-                </div>
-                <div class="performance-label">虚拟用户</div>
-              </div>
-              <div class="performance-item">
-                <div class="performance-value">{{ task.params.spawnRate }}个/秒</div>
-                <div class="performance-label">生成速率</div>
-              </div>
-              <div class="performance-item">
-                <div class="performance-value" style="color: #1890ff;">
-                  {{ task.params.duration || '∞' }}
-                </div>
-                <div class="performance-label">压测时长</div>
-              </div>
-            </div>
+          <template v-if="column.key === 'created_at'">
+            {{ formatDateTime(record.created_at) }}
+          </template>
 
-            <template #actions>
-              <Tooltip v-if="task.status === 'running'" title="停止">
-                <Button type="link" danger @click="stopTask(task.id)">
-                  <template #icon><StopOutlined /></template>
+          <template v-if="column.key === 'start_time'">
+            {{ formatDateTime(record.start_time) }}
+          </template>
+
+          <template v-if="column.key === 'finished_at'">
+            {{ formatDateTime(record.finished_at) }}
+          </template>
+
+          <template v-if="column.key === 'actions'">
+            <Space size="small">
+              <Tooltip title="预览">
+                <Button type="link" size="small" @click="previewTask(record.id)">
+                  <EyeOutlined />
                 </Button>
               </Tooltip>
-              <Tooltip v-if="task.status !== 'running'" title="执行">
-                <Button type="link" @click="startTask(task.id)">
-                  <template #icon><PlayCircleOutlined /></template>
+              <Tooltip v-if="record.status !== 'running'" title="开始执行">
+                <Button type="link" size="small" @click="updateTaskStatus(record.id, 'running')">
+                  <PlayCircleOutlined />
+                </Button>
+              </Tooltip>
+              <Tooltip v-else title="停止任务">
+                <Button type="link" size="small" danger @click="updateTaskStatus(record.id, 'canceled')">
+                  <StopOutlined />
                 </Button>
               </Tooltip>
               <Tooltip title="监控">
-                <Button type="link" @click="viewMonitor(task.id)">
-                  <template #icon><LineChartOutlined /></template>
-                </Button>
-              </Tooltip>
-              <Tooltip title="日志">
-                <Button type="link" @click="viewLogs(task.id)">
-                  <template #icon><FileTextOutlined /></template>
+                <Button type="link" size="small" @click="viewMonitor(record.id)">
+                  <LineChartOutlined />
                 </Button>
               </Tooltip>
               <Tooltip title="编辑">
-                <Button type="link" @click="showEditModal(task.id)">
-                  <template #icon><EditOutlined /></template>
+                <Button type="link" size="small" @click="showEditModal(record.id)">
+                  <EditOutlined />
                 </Button>
               </Tooltip>
               <Tooltip title="删除">
-                <Button type="link" danger @click="deleteTask(task.id)">
-                  <template #icon><DeleteOutlined /></template>
+                <Button type="link" size="small" danger @click="deleteTask(record.id)">
+                  <DeleteOutlined />
                 </Button>
               </Tooltip>
-            </template>
-          </ACard>
-        </Col>
-      </Row>
-
-      <!-- 卡片视图空状态 -->
-      <div v-if="paginatedTasks.length === 0" class="empty-state">
-        <div class="empty-icon">
-          <ScheduleOutlined />
-        </div>
-        <h3>暂无任务数据</h3>
-        <p>当前没有找到符合筛选条件的任务，请尝试调整筛选条件或创建新的压测任务。</p>
-        <Button type="primary" @click="showAddModal">
-          <template #icon><PlusOutlined /></template>
-          新增任务
-        </Button>
-      </div>
-    </div>
-
-    <!-- 表格视图 -->
-    <div v-else>
-      <ACard>
-        <Table
-            :columns="columns"
-            :data-source="paginatedTasks"
-            :pagination="false"
-            row-key="id"
-        >
-          <template #bodyCell="{ column, record }">
-            <!-- 状态标签 -->
-            <template v-if="column.key === 'status'">
-              <Tag :color="statusMap[record.status].color">
-                {{ statusMap[record.status].text }}
-              </Tag>
-            </template>
-
-            <!-- 负责人 -->
-            <template v-if="column.key === 'owner'">
-              <Space>
-                <Avatar size="small" style="backgroundColor: #1890ff">
-                  {{ record.owner.charAt(0) }}
-                </Avatar>
-                <span>{{ record.owner }}</span>
-              </Space>
-            </template>
-
-            <!-- 操作按钮 -->
-            <template v-if="column.key === 'actions'">
-              <Space size="small">
-                <Tooltip v-if="record.status === 'running'" title="停止">
-                  <Button size="small" type="link" danger @click="stopTask(record.id)">
-                    <StopOutlined />
-                  </Button>
-                </Tooltip>
-                <Tooltip v-if="record.status !== 'running'" title="执行">
-                  <Button size="small" type="link" @click="startTask(record.id)">
-                    <PlayCircleOutlined />
-                  </Button>
-                </Tooltip>
-                <Tooltip title="监控">
-                  <Button size="small" type="link" @click="viewMonitor(record.id)">
-                    <LineChartOutlined />
-                  </Button>
-                </Tooltip>
-                <Tooltip title="日志">
-                  <Button size="small" type="link" @click="viewLogs(record.id)">
-                    <FileTextOutlined />
-                  </Button>
-                </Tooltip>
-                <Tooltip title="编辑">
-                  <Button size="small" type="link" @click="showEditModal(record.id)">
-                    <EditOutlined />
-                  </Button>
-                </Tooltip>
-                <Tooltip title="删除">
-                  <Button size="small" type="link" danger @click="deleteTask(record.id)">
-                    <DeleteOutlined />
-                  </Button>
-                </Tooltip>
-              </Space>
-            </template>
+            </Space>
           </template>
+        </template>
 
-          <template #emptyText>
-            <div class="empty-state">
-              <div class="empty-icon">
-                <ScheduleOutlined />
-              </div>
-              <h3>暂无任务数据</h3>
-              <p>当前没有找到符合筛选条件的任务，请尝试调整筛选条件或创建新的压测任务。</p>
-              <Button type="primary" @click="showAddModal">
-                <template #icon><PlusOutlined /></template>
-                新增任务
-              </Button>
+        <template #emptyText>
+          <div class="empty-state">
+            <div class="empty-icon">
+              <ScheduleOutlined />
             </div>
-          </template>
-        </Table>
-      </ACard>
-    </div>
+            <h3>暂无任务数据</h3>
+            <p>当前没有找到符合条件的任务，可以先创建一个任务开始联调。</p>
+          </div>
+        </template>
+      </Table>
+    </ACard>
 
-    <!-- 分页 -->
-    <div class="pagination-container" v-if="state.filteredTasks.length > 0">
+    <div class="pagination-container" v-if="state.total > 0">
       <Pagination
-          v-model:current="state.currentPage"
-          v-model:pageSize="state.pageSize"
-          :total="state.filteredTasks.length"
-          show-quick-jumper
-          show-size-changer
-          :show-total="(total: number) => `共 ${total} 条`"
+        v-model:current="state.currentPage"
+        v-model:pageSize="state.pageSize"
+        :total="state.total"
+        :page-size-options="['8', '16', '24', '48']"
+        show-quick-jumper
+        show-size-changer
+        @change="handlePageChange"
+        :show-total="(total: number) => `共 ${total} 条`"
       />
     </div>
 
-    <!-- 新增/编辑任务模态框 -->
     <Modal
-        v-model:visible="state.modalVisible"
-        :title="state.modalTitle"
-        width="600px"
-        @ok="handleModalOk"
-        @cancel="state.modalVisible = false"
+      v-model:open="state.modalVisible"
+      :title="state.modalTitle"
+      width="1060px"
+      :confirm-loading="state.submitLoading"
+      @ok="handleModalOk"
+      @cancel="handleModalCancel"
     >
       <Form layout="vertical">
         <Form.Item label="任务名称" required>
-          <Input
-              v-model:value="state.formData.name"
-              placeholder="例如：双十一大促压测"
-          />
+          <Input v-model:value="state.formData.name" placeholder="例如：双十一大促压测" />
         </Form.Item>
 
         <Row :gutter="16">
           <Col :span="12">
             <Form.Item label="所属项目" required>
-              <Select v-model:value="state.formData.project">
-                <Select.Option v-for="project in projectOptions" :key="project.value" :value="project.value">
-                  {{ project.label }}
+              <Select
+                v-model:value="state.formData.project_id"
+                placeholder="请选择项目"
+                @change="handleProjectChange"
+              >
+                <Select.Option
+                  v-for="project in state.projectOptions"
+                  :key="project.id"
+                  :value="project.id"
+                >
+                  {{ project.name }}
                 </Select.Option>
               </Select>
             </Form.Item>
           </Col>
           <Col :span="12">
-            <Form.Item label="所属场景" required>
-              <Select v-model:value="state.formData.scenario">
-                <Select.Option v-for="scenario in scenarioOptions" :key="scenario.value" :value="scenario.value">
-                  {{ scenario.label }}
+            <Form.Item label="负责人" required>
+              <Select
+                v-model:value="state.formData.owner_id"
+                placeholder="请选择负责人"
+                @change="handleOwnerChange"
+              >
+                <Select.Option
+                  v-for="user in state.ownerOptions"
+                  :key="user.id"
+                  :value="user.id"
+                >
+                  {{ user.name }} ({{ user.username }})
                 </Select.Option>
               </Select>
             </Form.Item>
@@ -425,21 +255,18 @@
 
         <Row :gutter="16">
           <Col :span="12">
-            <Form.Item label="负责人">
-              <Select v-model:value="state.formData.owner">
-                <Select.Option value="张三">张三</Select.Option>
-                <Select.Option value="李四">李四</Select.Option>
-                <Select.Option value="王五">王五</Select.Option>
-                <Select.Option value="赵六">赵六</Select.Option>
-              </Select>
+            <Form.Item label="目标地址" required>
+              <Input v-model:value="state.formData.host" placeholder="例如：https://api.example.com" />
             </Form.Item>
           </Col>
           <Col :span="12">
             <Form.Item label="任务状态">
               <Select v-model:value="state.formData.status">
-                <Select.Option value="scheduled">已计划</Select.Option>
-                <Select.Option value="running">运行中</Select.Option>
-                <Select.Option value="stopped">已停止</Select.Option>
+                <Select.Option value="pending">待执行</Select.Option>
+                <Select.Option value="running">执行中</Select.Option>
+                <Select.Option value="completed">已完成</Select.Option>
+                <Select.Option value="failed">执行失败</Select.Option>
+                <Select.Option value="canceled">已取消</Select.Option>
               </Select>
             </Form.Item>
           </Col>
@@ -448,80 +275,231 @@
         <Divider>压测参数</Divider>
 
         <Row :gutter="16">
-          <Col :span="12">
+          <Col :span="8">
             <Form.Item label="虚拟用户数" required>
-              <InputNumber
-                  v-model:value="state.formData.users"
-                  :min="1"
-                  :max="10000"
-                  placeholder="例如：100"
-                  style="width: 100%"
-              />
+              <InputNumber v-model:value="state.formData.users" :min="1" style="width: 100%" />
             </Form.Item>
           </Col>
-          <Col :span="12">
+          <Col :span="8">
             <Form.Item label="生成速率 (个/秒)" required>
-              <InputNumber
-                  v-model:value="state.formData.spawnRate"
-                  :min="1"
-                  :max="1000"
-                  placeholder="例如：10"
-                  style="width: 100%"
-              />
+              <InputNumber v-model:value="state.formData.spawn_rate" :min="1" style="width: 100%" />
+            </Form.Item>
+          </Col>
+          <Col :span="8">
+            <Form.Item label="压测时长 (秒)" required>
+              <InputNumber v-model:value="state.formData.duration" :min="1" style="width: 100%" />
             </Form.Item>
           </Col>
         </Row>
 
-        <Form.Item label="压测时长 (分钟)">
-          <InputNumber
-              v-model:value="state.formData.duration"
-              :min="1"
-              :max="1440"
-              placeholder="留空表示无限时长"
-              style="width: 100%"
-          />
-          <div class="form-help">1-1440分钟，留空表示无限时长</div>
+        <Form.Item label="执行策略">
+          <Select v-model:value="state.formData.execution_strategy">
+            <Select.Option value="sequential">顺序执行</Select.Option>
+            <Select.Option value="weighted">按权重分配</Select.Option>
+          </Select>
         </Form.Item>
-
-        <Divider>高级设置</Divider>
 
         <Form.Item label="任务描述">
           <Input.TextArea
-              v-model:value="state.formData.description"
-              placeholder="描述任务的压测目标、注意事项..."
-              :rows="3"
+            v-model:value="state.formData.description"
+            placeholder="描述任务的压测目标、注意事项"
+            :rows="3"
           />
         </Form.Item>
 
-        <Row :gutter="16">
-          <Col :span="12">
-            <Form.Item label="性能目标 - TPS">
-              <InputNumber
-                  v-model:value="state.formData.targetTps"
-                  :min="1"
-                  placeholder="例如：1000"
-                  style="width: 100%"
-              />
-            </Form.Item>
-          </Col>
-          <Col :span="12">
-            <Form.Item label="性能目标 - 响应时间(ms)">
-              <InputNumber
-                  v-model:value="state.formData.targetRt"
-                  :min="1"
-                  placeholder="例如：200"
-                  style="width: 100%"
-              />
-            </Form.Item>
-          </Col>
-        </Row>
+        <Form.Item label="场景编排" required>
+          <div class="scenario-board">
+            <div class="scenario-board-head">
+              <div>
+                <div class="scenario-board-title">任务场景链路</div>
+                <div class="scenario-board-subtitle">
+                  请先选择所属项目，再从该项目下加载场景并编排执行顺序。
+                </div>
+              </div>
+              <Button type="dashed" @click="addScenarioRow" :disabled="!state.formData.project_id">
+                <template #icon><PlusOutlined /></template>
+                添加场景
+              </Button>
+            </div>
+
+            <div class="scenario-summary">
+              <div class="scenario-summary-item">
+                <span class="scenario-summary-label">执行策略</span>
+                <span class="scenario-summary-value">
+                  {{ executionStrategyMap[state.formData.execution_strategy] || state.formData.execution_strategy }}
+                </span>
+              </div>
+              <div class="scenario-summary-item">
+                <span class="scenario-summary-label">已编排场景</span>
+                <span class="scenario-summary-value">{{ selectedScenarioCount }}</span>
+              </div>
+              <div class="scenario-summary-item">
+                <span class="scenario-summary-label">权重合计</span>
+                <span class="scenario-summary-value">
+                  {{ state.formData.execution_strategy === 'weighted' ? totalScenarioWeight : '-' }}
+                </span>
+              </div>
+            </div>
+
+            <div class="config-tips">
+              <span>
+                {{ state.formData.execution_strategy === 'weighted'
+                  ? '当前策略会按场景权重挑选执行目标，可选填目标用户数限制。'
+                  : '当前策略会按编排顺序依次执行全部场景。' }}
+              </span>
+            </div>
+
+            <div class="scenario-list">
+              <div
+                v-for="(scenarioBind, index) in state.formData.scenarios"
+                :key="scenarioBind.row_key"
+                class="scenario-row"
+              >
+                <div class="scenario-row-head">
+                  <div class="scenario-row-title">
+                    <div class="sequence-chip">#{{ index + 1 }}</div>
+                    <div>
+                      <div class="scenario-card-title">第 {{ index + 1 }} 个执行场景</div>
+                      <div class="scenario-card-hint">
+                        {{ getScenarioDisplayName(scenarioBind.scenario_id) }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="scenario-row-actions">
+                    <Button size="small" :disabled="index === 0" @click="moveScenarioRow(index, 'up')">
+                      <template #icon><ArrowUpOutlined /></template>
+                    </Button>
+                    <Button
+                      size="small"
+                      :disabled="index === state.formData.scenarios.length - 1"
+                      @click="moveScenarioRow(index, 'down')"
+                    >
+                      <template #icon><ArrowDownOutlined /></template>
+                    </Button>
+                    <Button
+                      danger
+                      size="small"
+                      :disabled="state.formData.scenarios.length <= 1"
+                      @click="removeScenarioRow(index)"
+                    >
+                      <template #icon><DeleteOutlined /></template>
+                    </Button>
+                  </div>
+                </div>
+
+                <Row :gutter="12">
+                  <Col :span="12">
+                    <Form.Item label="选择场景" class="scenario-inline-item">
+                      <Select
+                        v-model:value="scenarioBind.scenario_id"
+                        :disabled="!state.formData.project_id"
+                        placeholder="请选择场景"
+                        style="width: 100%"
+                      >
+                        <Select.Option
+                          v-for="scenario in getAvailableScenarioOptions(scenarioBind.scenario_id)"
+                          :key="scenario.id"
+                          :value="scenario.id"
+                        >
+                          {{ scenario.name }}
+                        </Select.Option>
+                      </Select>
+                    </Form.Item>
+                  </Col>
+                  <Col :span="4">
+                    <Form.Item label="执行顺序" class="scenario-inline-item">
+                      <div class="order-chip">顺序 {{ index + 1 }}</div>
+                    </Form.Item>
+                  </Col>
+                  <Col :span="4">
+                    <Form.Item label="权重" class="scenario-inline-item">
+                      <InputNumber
+                        v-model:value="scenarioBind.weight"
+                        :min="0"
+                        :disabled="state.formData.execution_strategy !== 'weighted'"
+                        style="width: 100%"
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col :span="4">
+                    <Form.Item label="目标用户数" class="scenario-inline-item">
+                      <InputNumber
+                        v-model:value="scenarioBind.target_users"
+                        :min="1"
+                        placeholder="不限"
+                        style="width: 100%"
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </div>
+            </div>
+          </div>
+        </Form.Item>
       </Form>
+    </Modal>
+
+    <Modal
+      v-model:open="state.previewVisible"
+      title="任务详情预览"
+      width="1020px"
+      :footer="null"
+    >
+      <div v-if="state.previewLoading" class="preview-loading">
+        <a-spin tip="正在加载任务详情..." />
+      </div>
+
+      <Descriptions v-else-if="state.previewData" :column="2" bordered>
+        <DescriptionsItem label="任务ID">{{ state.previewData.id }}</DescriptionsItem>
+        <DescriptionsItem label="任务名称">{{ state.previewData.name }}</DescriptionsItem>
+        <DescriptionsItem label="所属项目">{{ state.previewData.project }}</DescriptionsItem>
+        <DescriptionsItem label="负责人">{{ state.previewData.owner }}</DescriptionsItem>
+        <DescriptionsItem label="任务状态">
+          <Tag :color="statusMap[state.previewData.status]?.color || 'default'">
+            {{ statusMap[state.previewData.status]?.text || state.previewData.status }}
+          </Tag>
+        </DescriptionsItem>
+        <DescriptionsItem label="目标地址">{{ state.previewData.host }}</DescriptionsItem>
+        <DescriptionsItem label="虚拟用户数">{{ state.previewData.users }}</DescriptionsItem>
+        <DescriptionsItem label="生成速率">{{ state.previewData.spawn_rate }}</DescriptionsItem>
+        <DescriptionsItem label="时长(秒)">{{ state.previewData.duration || '-' }}</DescriptionsItem>
+        <DescriptionsItem label="执行策略">
+          {{ executionStrategyMap[state.previewData.execution_strategy] || state.previewData.execution_strategy }}
+        </DescriptionsItem>
+        <DescriptionsItem label="开始时间">{{ formatDateTime(state.previewData.start_time) }}</DescriptionsItem>
+        <DescriptionsItem label="结束时间">{{ formatDateTime(state.previewData.finished_at) }}</DescriptionsItem>
+        <DescriptionsItem label="任务描述" :span="2">
+          {{ state.previewData.description || '-' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="关联场景" :span="2">
+          <div class="preview-scenario-list">
+            <div
+              v-for="scenario in state.previewData.scenarios"
+              :key="`${scenario.scenario_id}-${scenario.order}`"
+              class="preview-scenario-item"
+            >
+              <span>{{ scenario.scenario }}</span>
+              <span class="subtle-text">
+                顺序 {{ scenario.order }}
+                <template v-if="state.previewData.execution_strategy === 'weighted'">
+                  / 权重 {{ scenario.weight }}
+                </template>
+                <template v-if="scenario.target_users">
+                  / 目标用户 {{ scenario.target_users }}
+                </template>
+              </span>
+            </div>
+          </div>
+        </DescriptionsItem>
+      </Descriptions>
     </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, h } from 'vue'
+import { computed, onMounted, reactive } from 'vue'
+import dayjs from 'dayjs'
+import { useRouter } from 'vue-router'
 import {
   Card as ACard,
   Row,
@@ -533,13 +511,15 @@ import {
   Table,
   Tag,
   Avatar,
-  Statistic,
   Modal,
   Form,
   Pagination,
   Space,
   Divider,
-  Tooltip
+  Tooltip,
+  Descriptions,
+  DescriptionsItem,
+  message,
 } from 'ant-design-vue'
 import {
   PlusOutlined,
@@ -548,664 +528,477 @@ import {
   EyeOutlined,
   EditOutlined,
   DeleteOutlined,
-  AppstoreOutlined,
-  UnorderedListOutlined,
   ScheduleOutlined,
   PlayCircleOutlined,
   StopOutlined,
   LineChartOutlined,
-  FileTextOutlined,
   FilterOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined
+  ArrowUpOutlined,
+  ArrowDownOutlined,
 } from '@ant-design/icons-vue'
-import router from "@/router";
+import { useUserStore } from '@/store/modules/user'
+import { TaskApi } from '@/api/task'
+import { ProjectApi } from '@/api/project'
+import { ScenarioApi } from '@/api/scenario'
+import { UserApi } from '@/api/user'
+import type { ProjectInfo } from '@/types/project'
+import type { ScenarioInfo } from '@/types/scenario'
+import type { UserOption } from '@/types/user'
+import type { TaskInfo, TaskScenarioBind } from '@/types/task'
 
-// 模拟数据
-const mockTasks = [
-  {
-    id: "TASK-20240120-001",
-    name: "Baidu首页压测",
-    project: "搜索引擎",
-    scenario: "首页访问场景",
-    owner: "张三",
-    status: "completed",
-    params: {
-      users: 100,
-      spawnRate: 10,
-      duration: 30
-    },
-    description: "搜索引擎首页的高并发访问测试",
-    stats: {
-      successRate: 99.8,
-      avgResponseTime: 45,
-      totalRequests: 15000
-    },
-    targets: {
-      tps: 500,
-      responseTime: 100
-    },
-    createdAt: "2024-01-20 10:30:00",
-    startedAt: "2024-01-20 10:30:00",
-    endedAt: "2024-01-20 11:00:00",
-    updatedAt: "2024-01-20 11:05:00"
-  },
-  {
-    id: "TASK-20240120-002",
-    name: "双十一大促压测",
-    project: "电商平台",
-    scenario: "下单流程场景",
-    owner: "李四",
-    status: "running",
-    params: {
-      users: 500,
-      spawnRate: 50,
-      duration: 60
-    },
-    description: "双十一活动期间的订单处理能力测试",
-    stats: {
-      successRate: 98.5,
-      avgResponseTime: 156,
-      totalRequests: 45000
-    },
-    targets: {
-      tps: 1000,
-      responseTime: 200
-    },
-    createdAt: "2024-01-20 14:00:00",
-    startedAt: "2024-01-20 14:00:00",
-    endedAt: null,
-    updatedAt: "2024-01-20 14:30:00"
-  },
-  {
-    id: "TASK-20240120-003",
-    name: "用户登录性能测试",
-    project: "用户中心",
-    scenario: "登录注册场景",
-    owner: "王五",
-    status: "stopped",
-    params: {
-      users: 200,
-      spawnRate: 20,
-      duration: null
-    },
-    description: "用户登录接口的性能和稳定性测试",
-    stats: {
-      successRate: 99.2,
-      avgResponseTime: 124,
-      totalRequests: 12000
-    },
-    targets: {
-      tps: 2000,
-      responseTime: 100
-    },
-    createdAt: "2024-01-19 09:15:00",
-    startedAt: "2024-01-19 09:15:00",
-    endedAt: "2024-01-19 09:45:00",
-    updatedAt: "2024-01-19 09:50:00"
-  },
-  {
-    id: "TASK-20240119-001",
-    name: "API网关极限测试",
-    project: "API网关",
-    scenario: "高并发场景",
-    owner: "赵六",
-    status: "failed",
-    params: {
-      users: 1000,
-      spawnRate: 100,
-      duration: 45
-    },
-    description: "API网关的极限并发处理能力测试",
-    stats: {
-      successRate: 85.5,
-      avgResponseTime: 320,
-      totalRequests: 18000
-    },
-    targets: {
-      tps: 5000,
-      responseTime: 50
-    },
-    createdAt: "2024-01-19 16:30:00",
-    startedAt: "2024-01-19 16:30:00",
-    endedAt: "2024-01-19 17:15:00",
-    updatedAt: "2024-01-19 17:20:00"
-  },
-  {
-    id: "TASK-20240118-001",
-    name: "商品搜索性能测试",
-    project: "电商平台",
-    scenario: "搜索性能场景",
-    owner: "张三",
-    status: "completed",
-    params: {
-      users: 300,
-      spawnRate: 30,
-      duration: 20
-    },
-    description: "商品搜索接口的性能优化验证",
-    stats: {
-      successRate: 99.5,
-      avgResponseTime: 95,
-      totalRequests: 18000
-    },
-    targets: {
-      tps: 1500,
-      responseTime: 150
-    },
-    createdAt: "2024-01-18 13:20:00",
-    startedAt: "2024-01-18 13:20:00",
-    endedAt: "2024-01-18 13:40:00",
-    updatedAt: "2024-01-18 13:45:00"
-  },
-  {
-    id: "TASK-20240118-002",
-    name: "支付接口压测",
-    project: "支付系统",
-    scenario: "支付压测场景",
-    owner: "李四",
-    status: "completed",
-    params: {
-      users: 150,
-      spawnRate: 15,
-      duration: 40
-    },
-    description: "支付核心流程的稳定性和安全性测试",
-    stats: {
-      successRate: 97.9,
-      avgResponseTime: 210,
-      totalRequests: 9000
-    },
-    targets: {
-      tps: 800,
-      responseTime: 300
-    },
-    createdAt: "2024-01-18 11:10:00",
-    startedAt: "2024-01-18 11:10:00",
-    endedAt: "2024-01-18 11:50:00",
-    updatedAt: "2024-01-18 11:55:00"
-  },
-  {
-    id: "TASK-20240117-001",
-    name: "推荐系统负载测试",
-    project: "推荐引擎",
-    scenario: "推荐算法场景",
-    owner: "王五",
-    status: "running",
-    params: {
-      users: 400,
-      spawnRate: 40,
-      duration: null
-    },
-    description: "推荐算法的实时计算能力测试",
-    stats: {
-      successRate: 99.3,
-      avgResponseTime: 132,
-      totalRequests: 32000
-    },
-    targets: {
-      tps: 3000,
-      responseTime: 120
-    },
-    createdAt: "2024-01-17 15:45:00",
-    startedAt: "2024-01-17 15:45:00",
-    endedAt: null,
-    updatedAt: "2024-01-17 16:15:00"
-  },
-  {
-    id: "TASK-20240117-002",
-    name: "图片上传性能测试",
-    project: "内容管理",
-    scenario: "文件上传场景",
-    owner: "赵六",
-    status: "stopped",
-    params: {
-      users: 80,
-      spawnRate: 8,
-      duration: 25
-    },
-    description: "大文件上传的带宽和稳定性测试",
-    stats: {
-      successRate: 98.8,
-      avgResponseTime: 180,
-      totalRequests: 2000
-    },
-    targets: {
-      tps: 500,
-      responseTime: 250
-    },
-    createdAt: "2024-01-17 10:30:00",
-    startedAt: "2024-01-17 10:30:00",
-    endedAt: "2024-01-17 10:55:00",
-    updatedAt: "2024-01-17 11:00:00"
-  }
-]
+type FormScenarioBind = TaskScenarioBind & { row_key: string }
 
-// 响应式数据
+const userStore = useUserStore()
+
+const router = useRouter()
+
+const createDefaultScenarioRow = (): FormScenarioBind => ({
+  row_key: crypto.randomUUID(),
+  scenario_id: undefined as unknown as number,
+  order: 1,
+  weight: 0,
+  target_users: null,
+})
+
+const createDefaultFormData = () => ({
+  name: '',
+  description: '',
+  owner: userStore.name || '',
+  owner_id: userStore.userId || undefined,
+  project_id: undefined as number | undefined,
+  project: '',
+  host: '',
+  users: 10,
+  spawn_rate: 2,
+  duration: 60,
+  execution_strategy: 'sequential',
+  status: 'pending',
+  scenarios: [createDefaultScenarioRow()],
+})
+
 const state = reactive({
-  tasks: [...mockTasks],
-  filteredTasks: [...mockTasks],
+  tasks: [] as TaskInfo[],
+  projectOptions: [] as ProjectInfo[],
+  scenarioOptions: [] as ScenarioInfo[],
+  scenarioFilterOptions: [] as ScenarioInfo[],
+  ownerOptions: [] as UserOption[],
   currentPage: 1,
   pageSize: 8,
-  viewMode: 'card', // 'card' 或 'table'
-  searchFilters: {
-    name: '',
-    status: '',
-    project: '',
-    scenario: ''
-  },
+  total: 0,
+  listLoading: false,
+  submitLoading: false,
   modalVisible: false,
   modalTitle: '创建新任务',
   isEditing: false,
-  currentEditId: null as string | null,
-  formData: {
+  currentEditId: null as number | null,
+  previewVisible: false,
+  previewLoading: false,
+  previewData: null as TaskInfo | null,
+  searchFilters: {
     name: '',
-    project: '',
-    scenario: '',
-    owner: '张三',
-    status: 'scheduled',
-    users: null as number | null,
-    spawnRate: null as number | null,
-    duration: null as number | null,
-    description: '',
-    targetTps: null as number | null,
-    targetRt: null as number | null
-  }
+    status: '',
+    project_id: undefined as number | undefined,
+    scenario_id: undefined as number | undefined,
+  },
+  formData: createDefaultFormData(),
 })
 
-// 选项数据
-const projectOptions = [
-  { value: '电商平台', label: '电商平台' },
-  { value: 'API网关', label: 'API网关' },
-  { value: '用户中心', label: '用户中心' },
-  { value: '支付系统', label: '支付系统' },
-  { value: '搜索引擎', label: '搜索引擎' },
-  { value: '推荐引擎', label: '推荐引擎' },
-  { value: '内容管理', label: '内容管理' }
-]
-
-const scenarioOptions = [
-  { value: '首页访问场景', label: '首页访问场景' },
-  { value: '下单流程场景', label: '下单流程场景' },
-  { value: '登录注册场景', label: '登录注册场景' },
-  { value: '高并发场景', label: '高并发场景' },
-  { value: '搜索性能场景', label: '搜索性能场景' },
-  { value: '支付压测场景', label: '支付压测场景' },
-  { value: '推荐算法场景', label: '推荐算法场景' },
-  { value: '文件上传场景', label: '文件上传场景' }
-]
-
-// 状态映射
-const statusMap: Record<string, { text: string, color: string }> = {
-  running: { text: '运行中', color: 'green' },
+const statusMap: Record<string, { text: string; color: string }> = {
+  pending: { text: '待执行', color: 'default' },
+  running: { text: '执行中', color: 'green' },
   completed: { text: '已完成', color: 'blue' },
-  stopped: { text: '已停止', color: 'orange' },
-  failed: { text: '失败', color: 'red' },
-  scheduled: { text: '已计划', color: 'purple' }
+  failed: { text: '执行失败', color: 'red' },
+  canceled: { text: '已取消', color: 'orange' },
 }
 
-// 计算属性
-const statistics = computed(() => {
-  const total = state.tasks.length
-  const running = state.tasks.filter(t => t.status === 'running').length
-  let successRate = 0
-  let totalDuration = 0
+const executionStrategyMap: Record<string, string> = {
+  sequential: '顺序执行',
+  weighted: '按权重分配',
+}
 
-  state.tasks.forEach(t => {
-    if (t.stats?.successRate) {
-      successRate += t.stats.successRate
-    }
-    if (t.params?.duration) {
-      totalDuration += t.params.duration
-    }
-  })
+const selectedScenarioCount = computed(
+  () => state.formData.scenarios.filter(item => item.scenario_id).length
+)
 
-  return {
-    total,
-    running,
-    successRate: total > 0 ? (successRate / total).toFixed(1) : '0.0',
-    totalDuration: (totalDuration / 60).toFixed(1) // 转换为小时
-  }
-})
+const totalScenarioWeight = computed(
+  () => state.formData.scenarios.reduce((sum, item) => sum + Number(item.weight || 0), 0)
+)
 
-const paginatedTasks = computed(() => {
-  const start = (state.currentPage - 1) * state.pageSize
-  const end = start + state.pageSize
-  return state.filteredTasks.slice(start, end)
-})
-
-// 表格列定义
 const columns = [
-  {
-    title: '任务ID',
-    dataIndex: 'id',
-    key: 'id',
-    width: 120
-  },
-  {
-    title: '任务名称',
-    dataIndex: 'name',
-    key: 'name',
-    width: 180
-  },
-  {
-    title: '所属项目',
-    dataIndex: 'project',
-    key: 'project',
-    width: 120
-  },
-  {
-    title: '所属场景',
-    dataIndex: 'scenario',
-    key: 'scenario',
-    width: 140
-  },
-  {
-    title: '负责人',
-    dataIndex: 'owner',
-    key: 'owner',
-    width: 100
-  },
-  {
-    title: '状态',
-    dataIndex: 'status',
-    key: 'status',
-    width: 100
-  },
-  {
-    title: '创建时间',
-    dataIndex: 'createdAt',
-    key: 'createdAt',
-    width: 140
-  },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 180
-  }
+  { title: '任务ID', dataIndex: 'id', key: 'id', width: 130 },
+  { title: '任务名称', dataIndex: 'name', key: 'name', width: 180 },
+  { title: '所属项目', dataIndex: 'project', key: 'project', width: 140 },
+  { title: '关联场景', key: 'scenarios', width: 220 },
+  { title: '负责人', dataIndex: 'owner', key: 'owner', width: 120 },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 110 },
+  { title: '创建时间', key: 'created_at', width: 180 },
+  { title: '开始时间', key: 'start_time', width: 180 },
+  { title: '结束时间', key: 'finished_at', width: 180 },
+  { title: '操作', key: 'actions', width: 220, fixed: 'right' },
 ]
 
-// 方法
-const applyFilters = () => {
-  const { name, status, project, scenario } = state.searchFilters
-
-  state.filteredTasks = state.tasks.filter(task => {
-    // 名称筛选
-    if (name && !task.name.toLowerCase().includes(name.toLowerCase()) &&
-        !(task.description && task.description.toLowerCase().includes(name.toLowerCase()))) {
-      return false
-    }
-
-    // 状态筛选
-    if (status && task.status !== status) {
-      return false
-    }
-
-    // 项目筛选
-    if (project && task.project !== project) {
-      return false
-    }
-
-    // 场景筛选
-    if (scenario && task.scenario !== scenario) {
-      return false
-    }
-
-    return true
-  })
-
-  state.currentPage = 1
+const formatDateTime = (value?: string | null) => {
+  if (!value || !dayjs(value).isValid()) {
+    return '-'
+  }
+  return dayjs(value).format('YYYY-MM-DD HH:mm:ss')
 }
 
-const resetFilters = () => {
+const syncScenarioOrders = () => {
+  state.formData.scenarios = state.formData.scenarios.map((item, index) => ({
+    ...item,
+    order: index + 1,
+  }))
+}
+
+const getAvailableScenarioOptions = (currentScenarioId?: number) => {
+  const selectedIds = state.formData.scenarios
+    .map(item => item.scenario_id)
+    .filter((id): id is number => Boolean(id) && id !== currentScenarioId)
+
+  return state.scenarioOptions.filter(item => !selectedIds.includes(item.id) || item.id === currentScenarioId)
+}
+
+const getScenarioDisplayName = (scenarioId?: number) => {
+  if (!scenarioId) {
+    return '请选择当前任务要执行的场景'
+  }
+  return state.scenarioOptions.find(item => item.id === scenarioId)?.name || `场景 #${scenarioId}`
+}
+
+const normalizeTask = (task: TaskInfo): TaskInfo => ({
+  ...task,
+  status: task.status?.toLowerCase() || 'pending',
+  scenarios: Array.isArray(task.scenarios) ? task.scenarios : [],
+})
+
+const fetchProjectOptions = async () => {
+  const response = await ProjectApi.getProjectList({ page: 1, page_size: 200 })
+  state.projectOptions = response.data.results
+}
+
+const fetchOwnerOptions = async () => {
+  const response = await UserApi.userOptions()
+  state.ownerOptions = response.data
+}
+
+const fetchScenarioOptions = async (projectId?: number) => {
+  if (!projectId) {
+    state.scenarioOptions = []
+    return
+  }
+  const response = await ScenarioApi.getScenarioList({
+    page: 1,
+    page_size: 200,
+    project_id: projectId,
+  })
+  state.scenarioOptions = response.data.results
+}
+
+const fetchScenarioFilterOptions = async () => {
+  const response = await ScenarioApi.getScenarioList({
+    page: 1,
+    page_size: 200,
+    project_id: state.searchFilters.project_id,
+  })
+  state.scenarioFilterOptions = response.data.results
+}
+
+const fetchTaskList = async () => {
+  state.listLoading = true
+  try {
+    const response = await TaskApi.getTaskList({
+      page: state.currentPage,
+      page_size: state.pageSize,
+      name: state.searchFilters.name || undefined,
+      status: state.searchFilters.status || undefined,
+      project_id: state.searchFilters.project_id,
+      scenario_id: state.searchFilters.scenario_id,
+    })
+    state.tasks = response.data.results.map(normalizeTask)
+    state.total = response.data.total
+  } catch (error) {
+    console.error('获取任务列表失败:', error)
+    message.error('任务列表加载失败，请稍后重试')
+  } finally {
+    state.listLoading = false
+  }
+}
+
+const applyFilters = async () => {
+  state.currentPage = 1
+  await fetchTaskList()
+}
+
+const resetFilters = async () => {
   state.searchFilters = {
     name: '',
     status: '',
-    project: '',
-    scenario: ''
+    project_id: undefined,
+    scenario_id: undefined,
   }
-  state.filteredTasks = [...state.tasks]
   state.currentPage = 1
+  await fetchScenarioFilterOptions()
+  await fetchTaskList()
 }
 
-const switchView = (mode: string) => {
-  state.viewMode = mode
+const handleFilterProjectChange = async () => {
+  state.searchFilters.scenario_id = undefined
+  await fetchScenarioFilterOptions()
 }
 
-const showAddModal = () => {
+const handlePageChange = async (page: number, pageSize: number) => {
+  state.currentPage = page
+  state.pageSize = pageSize
+  await fetchTaskList()
+}
+
+const handleProjectChange = async (projectId: number) => {
+  const project = state.projectOptions.find(item => item.id === projectId)
+  state.formData.project_id = project?.id
+  state.formData.project = project?.name || ''
+  state.formData.scenarios = [createDefaultScenarioRow()]
+  syncScenarioOrders()
+  await fetchScenarioOptions(projectId)
+}
+
+const handleOwnerChange = (ownerId: number) => {
+  const owner = state.ownerOptions.find(item => item.id === ownerId)
+  state.formData.owner_id = owner?.id
+  state.formData.owner = owner?.name || ''
+}
+
+const addScenarioRow = () => {
+  state.formData.scenarios.push(createDefaultScenarioRow())
+  syncScenarioOrders()
+}
+
+const removeScenarioRow = (index: number) => {
+  state.formData.scenarios.splice(index, 1)
+  syncScenarioOrders()
+}
+
+const moveScenarioRow = (index: number, direction: 'up' | 'down') => {
+  const targetIndex = direction === 'up' ? index - 1 : index + 1
+  if (targetIndex < 0 || targetIndex >= state.formData.scenarios.length) {
+    return
+  }
+  const [current] = state.formData.scenarios.splice(index, 1)
+  state.formData.scenarios.splice(targetIndex, 0, current)
+  syncScenarioOrders()
+}
+
+const showAddModal = async () => {
   state.modalTitle = '创建新任务'
   state.isEditing = false
   state.currentEditId = null
-  state.formData = {
-    name: '',
-    project: '',
-    scenario: '',
-    owner: '张三',
-    status: 'scheduled',
-    users: null,
-    spawnRate: null,
-    duration: null,
-    description: '',
-    targetTps: null,
-    targetRt: null
-  }
+  state.formData = createDefaultFormData()
+  syncScenarioOrders()
+  state.scenarioOptions = []
   state.modalVisible = true
 }
 
-const showEditModal = (taskId: string) => {
-  const task = state.tasks.find(t => t.id === taskId)
-  if (!task) return
-
-  state.modalTitle = '编辑任务'
-  state.isEditing = true
-  state.currentEditId = taskId
-  state.formData = {
-    name: task.name,
-    project: task.project,
-    scenario: task.scenario,
-    owner: task.owner,
-    status: task.status,
-    users: task.params.users,
-    spawnRate: task.params.spawnRate,
-    duration: task.params.duration,
-    description: task.description || '',
-    targetTps: task.targets?.tps || null,
-    targetRt: task.targets?.responseTime || null
+const showEditModal = async (taskId: number) => {
+  try {
+    const response = await TaskApi.getTaskInfo({ id: taskId })
+    const task = normalizeTask(response.data)
+    state.modalTitle = '编辑任务'
+    state.isEditing = true
+    state.currentEditId = taskId
+    state.formData = {
+      name: task.name,
+      description: task.description || '',
+      owner: task.owner,
+      owner_id: task.owner_id,
+      project_id: task.project_id,
+      project: task.project,
+      host: task.host,
+      users: task.users,
+      spawn_rate: task.spawn_rate,
+      duration: task.duration || 60,
+      execution_strategy: task.execution_strategy || 'sequential',
+      status: task.status,
+      scenarios: task.scenarios.length
+        ? task.scenarios.map(item => ({ ...item, row_key: crypto.randomUUID() }))
+        : [createDefaultScenarioRow()],
+    }
+    syncScenarioOrders()
+    state.modalVisible = true
+    await fetchScenarioOptions(task.project_id)
+  } catch (error) {
+    console.error('获取任务详情失败:', error)
+    message.error('任务详情加载失败，请稍后重试')
   }
-  state.modalVisible = true
 }
 
-const handleModalOk = () => {
-  const { name, project, scenario, owner, status, users, spawnRate, duration, description, targetTps, targetRt } = state.formData
+const validateForm = () => {
+  if (!state.formData.name.trim()) {
+    message.error('请输入任务名称')
+    return false
+  }
+  if (!state.formData.project_id || !state.formData.project) {
+    message.error('请选择所属项目')
+    return false
+  }
+  if (!state.formData.owner_id || !state.formData.owner) {
+    message.error('请选择负责人')
+    return false
+  }
+  if (!state.formData.host.trim()) {
+    message.error('请输入目标地址')
+    return false
+  }
+  const validScenarios = state.formData.scenarios.filter(item => item.scenario_id)
+  if (!validScenarios.length) {
+    message.error('请至少选择一个场景')
+    return false
+  }
+  if (new Set(validScenarios.map(item => item.scenario_id)).size !== validScenarios.length) {
+    message.error('同一个任务中不能重复添加相同场景')
+    return false
+  }
+  if (state.formData.execution_strategy === 'weighted') {
+    const totalWeight = validScenarios.reduce((sum, item) => sum + Number(item.weight || 0), 0)
+    if (totalWeight <= 0) {
+      message.error('按权重分配时，场景权重总和必须大于 0')
+      return false
+    }
+  }
+  return true
+}
 
-  // 验证
-  if (!name.trim()) {
-    Modal.error({ title: '错误', content: '请输入任务名称' })
+const buildScenariosPayload = () =>
+  state.formData.scenarios
+    .filter(item => item.scenario_id)
+    .map(({ scenario_id, order, weight, target_users }) => ({
+      scenario_id,
+      order,
+      weight,
+      target_users: target_users || undefined,
+    }))
+
+const handleModalOk = async () => {
+  if (!validateForm()) {
     return
   }
+  state.submitLoading = true
+  try {
+    const payload = {
+      name: state.formData.name.trim(),
+      description: state.formData.description || undefined,
+      owner: state.formData.owner,
+      owner_id: state.formData.owner_id!,
+      project_id: state.formData.project_id!,
+      project: state.formData.project,
+      host: state.formData.host.trim(),
+      users: state.formData.users,
+      spawn_rate: state.formData.spawn_rate,
+      duration: state.formData.duration,
+      execution_strategy: state.formData.execution_strategy,
+      scenarios: buildScenariosPayload(),
+    }
 
-  if (!project) {
-    Modal.error({ title: '错误', content: '请选择所属项目' })
-    return
-  }
-
-  if (!scenario) {
-    Modal.error({ title: '错误', content: '请选择所属场景' })
-    return
-  }
-
-  if (!users || users <= 0) {
-    Modal.error({ title: '错误', content: '请输入有效的虚拟用户数' })
-    return
-  }
-
-  if (!spawnRate || spawnRate <= 0) {
-    Modal.error({ title: '错误', content: '请输入有效的生成速率' })
-    return
-  }
-
-  if (state.isEditing && state.currentEditId) {
-    // 编辑任务
-    const index = state.tasks.findIndex(t => t.id === state.currentEditId)
-    if (index !== -1) {
-      state.tasks[index] = {
-        ...state.tasks[index],
-        name,
-        project,
-        scenario,
-        owner,
-        status,
-        params: {
-          ...state.tasks[index].params,
-          users: users || 0,
-          spawnRate: spawnRate || 0,
-          duration: duration || null
-        },
-        description,
-        targets: {
-          tps: targetTps || 0,
-          responseTime: targetRt || 0
-        },
-        updatedAt: new Date().toLocaleString('zh-CN')
+    if (state.isEditing && state.currentEditId) {
+      await TaskApi.updateTask({
+        id: state.currentEditId,
+        ...payload,
+        status: state.formData.status,
+      })
+      message.success('任务已更新')
+    } else {
+      const response = await TaskApi.createTask(payload)
+      if (state.formData.status !== 'pending') {
+        await TaskApi.updateTask({
+          id: response.data.id,
+          status: state.formData.status,
+        })
       }
-      Modal.success({ title: '成功', content: `任务 ${name} 已更新` })
-    }
-  } else {
-    // 新增任务
-    const newId = `TASK-${new Date().toISOString().slice(0,10).replace(/-/g, '')}-${String(state.tasks.length + 1).padStart(3, '0')}`
-    const now = new Date().toLocaleString('zh-CN')
-
-    // 生成模拟统计数据
-    const successRate = 95 + Math.random() * 4
-    const avgResponseTime = 50 + Math.random() * 200
-    const totalRequests = (users || 0) * 60 * (duration || 1)
-
-    const newTask = {
-      id: newId,
-      name,
-      project,
-      scenario,
-      owner,
-      status,
-      params: {
-        users: users || 0,
-        spawnRate: spawnRate || 0,
-        duration: duration || null
-      },
-      description,
-      stats: {
-        successRate: parseFloat(successRate.toFixed(1)),
-        avgResponseTime: Math.round(avgResponseTime),
-        totalRequests: Math.round(totalRequests)
-      },
-      targets: {
-        tps: targetTps || 0,
-        responseTime: targetRt || 0
-      },
-      createdAt: now,
-      startedAt: status === 'running' ? now : null,
-      endedAt: null,
-      updatedAt: now
+      message.success('任务已创建')
     }
 
-    state.tasks.unshift(newTask)
-    Modal.success({ title: '成功', content: `任务 ${name} 已创建` })
+    state.modalVisible = false
+    await fetchTaskList()
+  } catch (error) {
+    console.error('保存任务失败:', error)
+    message.error('保存任务失败，请稍后重试')
+  } finally {
+    state.submitLoading = false
   }
+}
 
+const handleModalCancel = () => {
   state.modalVisible = false
-  resetFilters() // 重置筛选以显示新数据
 }
 
-const startTask = (taskId: string) => {
-  const task = state.tasks.find(t => t.id === taskId)
-  if (!task) return
-
-  Modal.confirm({
-    title: '确认执行',
-    content: `确定要开始执行任务 "${task.name}" 吗？`,
-    onOk() {
-      task.status = 'running'
-      task.startedAt = new Date().toLocaleString('zh-CN')
-      task.endedAt = null
-      task.updatedAt = new Date().toLocaleString('zh-CN')
-      Modal.success({ title: '成功', content: `任务 "${task.name}" 已开始执行` })
-    }
-  })
-}
-
-const stopTask = (taskId: string) => {
-  const task = state.tasks.find(t => t.id === taskId)
-  if (!task) return
-
-  Modal.confirm({
-    title: '确认停止',
-    content: `确定要停止任务 "${task.name}" 吗？`,
-    onOk() {
-      task.status = 'stopped'
-      task.endedAt = new Date().toLocaleString('zh-CN')
-      task.updatedAt = new Date().toLocaleString('zh-CN')
-      Modal.success({ title: '成功', content: `任务 "${task.name}" 已停止` })
-    }
-  })
-}
-
-const viewMonitor = (taskId: string) => {
-  const task = state.tasks.find(t => t.id === taskId)
-  if (task) {
-    Modal.info({
-      title: `任务监控: ${task.name}`,
-      content: `任务 ${task.name} 的监控页面将在新窗口打开`,
-      onOk() {
-        // 在实际项目中这里会跳转到监控页面
-        console.log(`打开任务 ${taskId} 的监控页面`)
-        router.push(`/monitor/1`)
-      }
-    })
+const previewTask = async (taskId: number) => {
+  state.previewVisible = true
+  state.previewLoading = true
+  try {
+    const response = await TaskApi.getTaskInfo({ id: taskId })
+    state.previewData = normalizeTask(response.data)
+  } catch (error) {
+    console.error('获取任务详情失败:', error)
+    message.error('任务详情加载失败，请稍后重试')
+    state.previewVisible = false
+  } finally {
+    state.previewLoading = false
   }
 }
 
-const viewLogs = (taskId: string) => {
-  const task = state.tasks.find(t => t.id === taskId)
-  if (task) {
-    Modal.info({
-      title: `任务日志: ${task.name}`,
-      content: `任务 ${task.name} 的日志页面将在新窗口打开`,
-      onOk() {
-        // 在实际项目中这里会跳转到日志页面
-        console.log(`打开任务 ${taskId} 的日志页面`)
-      }
-    })
+const updateTaskStatus = async (taskId: number, status: string) => {
+  try {
+    if (status === 'running') {
+      await TaskApi.runTask({ task_id: taskId })
+      message.success('任务已开始执行')
+    } else if (status === 'canceled') {
+      await TaskApi.stopTask({ task_id: taskId })
+      message.success('任务已发送停止指令')
+    } else {
+      await TaskApi.updateTask({ id: taskId, status })
+      message.success(`任务状态已更新为 ${statusMap[status]?.text || status}`)
+    }
+    await fetchTaskList()
+  } catch (error) {
+    console.error('更新任务状态失败:', error)
+    message.error('更新任务状态失败，请稍后重试')
   }
 }
 
-const deleteTask = (taskId: string) => {
-  const task = state.tasks.find(t => t.id === taskId)
-  if (!task) return
+const viewMonitor = (taskId: number) => {
+  router.push(`/monitor/${taskId}`)
+}
 
+const deleteTask = async (taskId: number) => {
+  const task = state.tasks.find(item => item.id === taskId)
+  if (!task) {
+    return
+  }
   Modal.confirm({
     title: '确认删除',
     content: `确定要删除任务 "${task.name}" 吗？此操作不可恢复。`,
-    onOk() {
-      const index = state.tasks.findIndex(t => t.id === taskId)
-      if (index !== -1) {
-        state.tasks.splice(index, 1)
-        resetFilters()
-        Modal.success({ title: '成功', content: `任务 "${task.name}" 已删除` })
-      }
-    }
+    okType: 'danger',
+    async onOk() {
+      await TaskApi.deleteTask({ id: taskId })
+      message.success(`任务 "${task.name}" 已删除`)
+      await fetchTaskList()
+    },
   })
 }
 
-onMounted(() => {
-  // 初始化数据
-  resetFilters()
+onMounted(async () => {
+  await fetchProjectOptions()
+  await fetchOwnerOptions()
+  await fetchScenarioFilterOptions()
+  await fetchTaskList()
 })
 </script>
 
 <style scoped>
-.task-management-container {
+.app-container {
   padding: 10px;
-  //min-height: 100vh;
+  min-height: calc(100vh - 64px);
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 
 .page-header {
@@ -1234,108 +1027,179 @@ onMounted(() => {
   margin: 8px 0 0 0;
 }
 
-.stats-row {
-  margin-bottom: 20px;
-}
-
 .filter-card {
   margin-bottom: 20px;
 }
 
-.task-card {
-  padding: 20px 0;
-  margin-bottom: 20px;
-  height: 100%;
+.pagination-container {
+  margin-top: 20px;
+  text-align: right;
 }
 
-.task-card-header {
-  margin-bottom: 12px;
+.scenario-board {
+  padding: 18px;
+  border: 1px solid #e8eef8;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(228, 239, 255, 0.85), transparent 34%),
+    linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
 }
 
-.task-name {
+.scenario-board-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.scenario-board-title {
   font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 4px 0;
-  color: rgba(0, 0, 0, 0.85);
+  font-weight: 700;
+  color: #183153;
 }
 
-.task-id {
+.scenario-board-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #6a7b92;
+  line-height: 1.6;
+}
+
+.scenario-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.scenario-summary-item {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(247, 250, 255, 0.95);
+  border: 1px solid rgba(22, 119, 255, 0.08);
+}
+
+.scenario-summary-label {
+  display: block;
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
-  margin-bottom: 8px;
+  color: #73839a;
 }
 
-.task-description {
+.scenario-summary-value {
+  display: block;
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #183153;
+}
+
+.config-tips {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(240, 247, 255, 0.9);
+  font-size: 12px;
+  line-height: 1.7;
+  color: #52637a;
+}
+
+.scenario-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.scenario-row {
+  padding: 16px;
+  border: 1px solid #edf2fa;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: 0 8px 20px rgba(30, 64, 175, 0.04);
+}
+
+.scenario-row-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.scenario-row-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.scenario-card-title {
   font-size: 14px;
-  color: rgba(0, 0, 0, 0.65);
-  line-height: 1.5;
-  margin-bottom: 12px;
+  font-weight: 700;
+  color: #183153;
 }
 
-.task-tags {
-  margin-bottom: 16px;
+.scenario-card-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6a7b92;
+}
+
+.scenario-row-actions {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
-.task-meta {
-  background-color: #fafafa;
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 16px;
-}
-
-.meta-item {
-  display: flex;
-  justify-content: space-between;
+.sequence-chip,
+.order-chip {
+  min-width: 72px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  display: inline-flex;
   align-items: center;
-  margin-bottom: 8px;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.meta-item:last-child {
+.sequence-chip {
+  background: #eef4ff;
+  color: #1677ff;
+}
+
+.order-chip {
+  width: 100%;
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.scenario-inline-item {
   margin-bottom: 0;
 }
 
-.meta-label {
+.subtle-text {
   font-size: 12px;
   color: rgba(0, 0, 0, 0.45);
 }
 
-.meta-value {
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.85);
-  font-weight: 500;
+.preview-loading {
+  min-height: 220px;
   display: flex;
   align-items: center;
+  justify-content: center;
+}
+
+.preview-scenario-list {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.task-performance {
+.preview-scenario-item {
   display: flex;
   justify-content: space-between;
-  background-color: #fafafa;
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 16px;
-}
-
-.performance-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-}
-
-.performance-value {
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.performance-label {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
+  gap: 12px;
 }
 
 .empty-state {
@@ -1361,28 +1225,18 @@ onMounted(() => {
   margin: 0 auto 16px;
 }
 
-.pagination-container {
-  margin-top: 20px;
-  text-align: right;
-}
-
-.form-help {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
-  margin-top: 4px;
-}
-
 @media (max-width: 768px) {
   .page-header {
     flex-direction: column;
   }
 
-  .stats-row .ant-col {
-    margin-bottom: 16px;
+  .scenario-board-head,
+  .scenario-row-head {
+    flex-direction: column;
   }
 
-  .task-card {
-    margin-bottom: 16px;
+  .scenario-summary {
+    grid-template-columns: 1fr;
   }
 }
 </style>

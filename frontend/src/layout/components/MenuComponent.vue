@@ -62,8 +62,9 @@ watch(
 );
 
 // 菜单点击事件
-const handleMenuClick = (e: { key: string }) => {
-  const menuItem = menuItems.value.find(item => item.key === e.key);
+const handleMenuClick: MenuProps['onClick'] = (e) => {
+  const menuKey = String(e.key);
+  const menuItem = menuItems.value.find(item => item.key === menuKey);
   if (menuItem?.path) {
     router.push(menuItem.path);
   }

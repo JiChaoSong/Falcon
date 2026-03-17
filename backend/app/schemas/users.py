@@ -24,6 +24,8 @@ class UserCreate(BaseModel):
     email: str | None = None
     phone: str | None = None
     avatar: str | None = None
+    is_active: bool = True
+    is_admin: bool = False
 
 class UserUpdate(BaseModel):
     id: int
@@ -32,6 +34,8 @@ class UserUpdate(BaseModel):
     email: str | None = None
     phone: str | None = None
     avatar: str | None = None
+    is_active: bool | None = None
+    is_admin: bool | None = None
 
 class UserInfo(BaseSchema):
     username: str
@@ -41,6 +45,7 @@ class UserInfo(BaseSchema):
     avatar: str | None
     is_active: bool
     is_admin: bool
+    last_login_at: datetime | None = None
 
 
 class UserLogin(BaseModel):
@@ -59,8 +64,24 @@ class UserInfoListQuery(BaseQuery):
     name: str | None = None
     email: str | None = None
     phone: str | None = None
+    is_active: bool | None = None
     page: int = 1
     page_size: int = 10
+
+
+class ResetUserPassword(BaseModel):
+    id: int
+    password: str
+
+
+class UserOption(BaseModel):
+    id: int
+    username: str
+    name: str
+
+
+class UserOptionListResponse(BaseResponse):
+    data: Optional[List[UserOption]] = None
 
 class UserInfoList(BaseListSchema):
 

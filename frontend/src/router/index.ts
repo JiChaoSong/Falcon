@@ -119,6 +119,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/layout/components/MonitorLayout.vue'),
         meta: { title: '任务监控', requiresAuth: true }
     },
+    {
+        path: '/report/:taskId?',
+        name: 'TaskReport',
+        component: () => import('@/views/task/report.vue'),
+        meta: { title: '任务报告', requiresAuth: true }
+    },
     // 登录页
     {
         path: '/login',
