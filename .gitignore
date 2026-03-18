@@ -19,6 +19,7 @@ docs/env-options.rst
 .editorconfig
 __pycache__
 .pytest_cache
+pytest-cache*/
 .sass-cache/
 .env
 yarn-error.log
@@ -41,8 +42,7 @@ node_modules
 *.local
 
 # Editor directories and files
-.vscode/*
-!.vscode/extensions.json
+.vscode
 .idea
 .DS_Store
 *.suo
@@ -50,3 +50,4 @@ node_modules
 *.njsproj
 *.sln
 *.sw?
+.env.worker

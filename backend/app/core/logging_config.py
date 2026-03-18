@@ -89,7 +89,7 @@ class RequestContextFilter(logging.Filter):
 
         except Exception as e:
             # 如果获取上下文失败，设置默认值
-            record.request_id = "unknown"
+            record.request_id = "--"
             record.user_id = "anonymous"
             record.username = "anonymous"
             record.error = f"Context filter error: {str(e)}"
@@ -324,7 +324,7 @@ class StructuredLoggerAdapter(logging.LoggerAdapter):
 
         # 自动添加常用字段
         if 'endpoint' not in extra:
-            extra['endpoint'] = f"{self.logger.name}.{kwargs.get('func', 'unknown')}"
+            extra['endpoint'] = f"{self.logger.name}.{kwargs.get('func', '--')}"
 
         if 'operation' not in extra:
             extra['operation'] = msg.split(' - ')[0] if ' - ' in msg else msg[:30]
@@ -454,7 +454,7 @@ def setup_logging(
         'uvicorn.access': 'WARNING',
         'fastapi': 'WARNING',
         'sqlalchemy': 'WARNING',
-        'sqlalchemy.engine': 'INFO',
+        'sqlalchemy.engine': 'WARNING',
         'aiosqlite': 'WARNING',
         'httpx': 'WARNING',
         'requests': 'WARNING',
@@ -480,7 +480,7 @@ def get_logger(name: str = None, extra: Dict[str, Any] = None) -> StructuredLogg
     if name is None:
         # 获取调用模块的名称
         frame = sys._getframe(1)
-        name = frame.f_globals.get('__name__', 'unknown')
+        name = frame.f_globals.get('__name__', '--')
 
     logger = logging.getLogger(name)
 

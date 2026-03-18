@@ -1,12 +1,16 @@
-import datetime
-from dataclasses import dataclass
+from datetime import timezone, timedelta
 from typing import Any, Dict
 
 from app.decorators.audit import get_current_request_id
 from app.enums.base import AbstractBaseCodeMessageEnum
 from app.enums.response import ResponseEnums
+from app.utils.time_utils import utc_now
 import logging
 logger = logging.getLogger(__name__)
+
+
+def beijing_now_string() -> str:
+    return utc_now().astimezone(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')
 
 class CommonResponse:
 
@@ -16,7 +20,7 @@ class CommonResponse:
             code=response_enums.code,
             message=response_enums.message,
             data=data,
-            systemTime=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            systemTime=beijing_now_string(),
             type='success',
             error=None,
             request_id=request_id,
@@ -32,7 +36,7 @@ class SuccessResponse:
                 code = response_enums.code,
                 message = response_enums.message if message is None else message,
                 data = data,
-                systemTime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                systemTime = beijing_now_string(),
                 type = 'success',
                 error = None,
                 request_id=request_id,
@@ -50,7 +54,7 @@ class SystemExceptionResponse:
                 code = response_enums.code,
                 message = response_enums.message,
                 data = None,
-                systemTime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                systemTime = beijing_now_string(),
                 type = 'error',
                 error=None,
                 request_id=request_id,
@@ -67,7 +71,7 @@ class ExceptionResponse:
             code=code,
             message=message,
             data=None,
-            systemTime=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            systemTime=beijing_now_string(),
             type='error',
             error = exception,
             request_id=request_id,
@@ -85,7 +89,7 @@ class AuthExceptResponse:
             code=response_enum.code,
             message=response_enum.message,
             data=None,
-            systemTime=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            systemTime=beijing_now_string(),
             type='error',
             error=None,
             request_id=request_id,
@@ -102,7 +106,7 @@ class FailExceptResponse:
             code=42001,
             message=message,
             data=None,
-            systemTime=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            systemTime=beijing_now_string(),
             type='error',
             error = None,
             request_id=request_id,

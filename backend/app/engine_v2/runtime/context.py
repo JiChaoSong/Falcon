@@ -19,3 +19,18 @@ class RuntimeContext:
         for key, item_value in variables.items():
             result = result.replace(f"{{{{{key}}}}}", str(item_value))
         return result
+
+    def render_value(self, value: Any) -> Any:
+        if isinstance(value, str):
+            return self.render_text(value)
+        if isinstance(value, list):
+            return [self.render_value(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                str(self.render_text(str(key))): self.render_value(item)
+                for key, item in value.items()
+            }
+        return value
+
+    def update_variables(self, values: dict[str, Any]) -> None:
+        self.scenario_variables.update(values)

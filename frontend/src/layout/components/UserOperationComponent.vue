@@ -1,29 +1,36 @@
 <script setup lang="ts">
-
-import UserInfoComponent from "@/layout/components/UserInfoComponent.vue";
-import {LogoutOutlined, SettingOutlined, UserOutlined} from "@ant-design/icons-vue";
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { message, Modal } from 'ant-design-vue'
+import UserInfoComponent from '@/layout/components/UserInfoComponent.vue'
+import { LogoutOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons-vue'
 import { useUserStore } from '@/store/modules/user'
 
 const router = useRouter()
-
 const userStore = useUserStore()
 
+const userInfo = computed(() => ({
+  name: userStore.name || userStore.username || '未命名用户',
+  avatar: userStore.avatar,
+}))
 
-const userInfo = reactive({
-  name: userStore.name,
-  avatar: userStore.avatar
-})
+const handleOpenProfile = () => {
+  router.push('/profile')
+}
 
-// 退出登录
+const handleOpenSettings = () => {
+  router.push('/account/settings')
+}
+
 const handleLogout = () => {
   Modal.confirm({
-    title: '确认退出',
-    content: '确定要退出登录吗？',
-    onOk() {
-      userStore.logout()
+    title: '确认退出登录？',
+    content: '退出后将返回登录页，如有未保存内容请先处理。',
+    async onOk() {
+      await userStore.logout()
       message.success('已退出登录')
       router.push('/login')
-    }
+    },
   })
 }
 </script>
@@ -31,14 +38,14 @@ const handleLogout = () => {
 <template>
   <div class="header-user">
     <a-dropdown placement="bottomRight">
-      <user-info-component :userInfo="userInfo"/>
+      <user-info-component :userInfo="userInfo" />
       <template #overlay>
         <a-menu>
-          <a-menu-item>
+          <a-menu-item @click="handleOpenProfile">
             <user-outlined />
             个人中心
           </a-menu-item>
-          <a-menu-item>
+          <a-menu-item @click="handleOpenSettings">
             <setting-outlined />
             账户设置
           </a-menu-item>
@@ -50,10 +57,8 @@ const handleLogout = () => {
         </a-menu>
       </template>
     </a-dropdown>
-
   </div>
 </template>
 
 <style scoped>
-
 </style>

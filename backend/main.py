@@ -5,7 +5,6 @@ from app.middleware.audit import AuditMiddleware
 from app.middleware.auth import AuthMiddleware
 from app.middleware.request_context import RequestContextMiddleware
 from app.middleware.response_wrapper import ResponseWrapperMiddleware
-from app.models.base import Base
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -13,8 +12,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.middleware.gzip import GZipMiddleware
 
-from app.api import project, case, scenario, task, user
+from app.api import project, case, scenario, task, user, worker, ws
 from app.core.config import settings
+from app.db import Base
+from app.grpc.control_plane_server import control_plane_grpc_server
 
 # 初始化日志
 setup_logging(
@@ -29,8 +30,10 @@ setup_logging(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     register_audit_listeners(Base)
+    control_plane_grpc_server.start()
 
     yield
+    control_plane_grpc_server.stop()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -88,6 +91,8 @@ app.include_router(case.router)
 app.include_router(scenario.router)
 app.include_router(task.router)
 app.include_router(user.router)
+app.include_router(worker.router)
+app.include_router(ws.router)
 
 
 if __name__ == "__main__":

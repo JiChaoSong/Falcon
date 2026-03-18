@@ -183,6 +183,9 @@ class TaskRuntimeStatusData(BaseModel):
     p99: float = 0
     host: str | None = None
     latest_error: str | None = None
+    status_code_counts: dict[str, int] = {}
+    error_type_counts: dict[str, int] = {}
+    failure_samples: List[Any] = []
     stats: List[Any] = []
     history: List[TaskMetricPoint] = []
 
@@ -244,6 +247,9 @@ class TaskReportData(BaseModel):
     p95: float = 0
     p99: float = 0
     latest_error: str | None = None
+    status_code_counts: dict[str, int] = {}
+    error_type_counts: dict[str, int] = {}
+    failure_samples: List[Any] = []
     hottest_endpoint: TaskReportEndpoint | None = None
     riskiest_endpoint: TaskReportEndpoint | None = None
     stats: List[Any] = []

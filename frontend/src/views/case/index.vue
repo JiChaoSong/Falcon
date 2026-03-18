@@ -683,7 +683,6 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import dayjs from 'dayjs'
 import {
   Card as ACard,
   Row,
@@ -724,6 +723,7 @@ import {
 } from '@ant-design/icons-vue'
 import { CaseApi } from '@/api/case'
 import { ProjectApi } from '@/api/project'
+import { formatDateTime } from '@/utils/tools'
 import type {
   CaseHeaderItem,
   CaseImportItem,
@@ -895,7 +895,7 @@ const columns = [
     title: '用例ID',
     dataIndex: 'id',
     key: 'id',
-    width: 110,
+    width: 130,
   },
   {
     title: '用例名称',
@@ -988,13 +988,6 @@ const importColumns = [
     width: 140,
   },
 ]
-
-const formatDateTime = (value?: string | null) => {
-  if (!value || !dayjs(value).isValid()) {
-    return '-'
-  }
-  return dayjs(value).format('YYYY-MM-DD HH:mm:ss')
-}
 
 const truncateText = (text: string, maxLength: number) => {
   if (!text) {

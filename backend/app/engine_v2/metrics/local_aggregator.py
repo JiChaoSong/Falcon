@@ -9,6 +9,9 @@ class LocalMetricsAggregator:
         self.total_requests = 0
         self.success_count = 0
         self.fail_count = 0
+        self.status_code_counts: dict[str, int] = {}
+        self.error_type_counts: dict[str, int] = {}
+        self.failure_samples: list[dict[str, Any]] = []
         self.response_times: list[float] = []
         self.window_started_at = datetime.now(timezone.utc)
         self.window_response_times: list[float] = []
@@ -22,6 +25,9 @@ class LocalMetricsAggregator:
         name: str,
         response_time_ms: float,
         success: bool,
+        status_code: int = 0,
+        error_type: str | None = None,
+        error_message: str | None = None,
         content_length: int = 0,
     ) -> None:
         with self.lock:
@@ -35,6 +41,20 @@ class LocalMetricsAggregator:
                 self.fail_count += 1
                 self.window_fail_count += 1
 
+            status_key = str(status_code or 0)
+            self.status_code_counts[status_key] = self.status_code_counts.get(status_key, 0) + 1
+            if error_type:
+                self.error_type_counts[error_type] = self.error_type_counts.get(error_type, 0) + 1
+            if not success and error_message:
+                self.failure_samples.append({
+                    "method": method,
+                    "name": name,
+                    "status_code": status_code,
+                    "error_type": error_type or "request_failed",
+                    "message": error_message[:300],
+                })
+                self.failure_samples = self.failure_samples[-20:]
+
             metric = self.endpoint_metrics.setdefault(
                 f"{method}:{name}",
                 {
@@ -47,15 +67,22 @@ class LocalMetricsAggregator:
                     "window_failures": 0,
                     "avg_content_length": 0,
                     "content_lengths": [],
+                    "status_code_counts": {},
+                    "error_type_counts": {},
+                    "latest_error": None,
                 },
             )
             metric["num_requests"] += 1
             metric["window_requests"] += 1
             metric["response_times"].append(response_time_ms)
             metric["content_lengths"].append(content_length)
+            metric["status_code_counts"][status_key] = metric["status_code_counts"].get(status_key, 0) + 1
             if not success:
                 metric["num_failures"] += 1
                 metric["window_failures"] += 1
+                metric["latest_error"] = error_message
+                if error_type:
+                    metric["error_type_counts"][error_type] = metric["error_type_counts"].get(error_type, 0) + 1
 
     def build_snapshot(self, active_users: int, latest_error: str | None = None) -> dict[str, Any]:
         with self.lock:
@@ -72,11 +99,13 @@ class LocalMetricsAggregator:
                 total_requests = metric["num_requests"]
                 total_failures = metric["num_failures"]
                 avg_response_time = (sum(response_times) / len(response_times)) if response_times else 0
+                endpoint_success_ratio = ((total_requests - total_failures) / total_requests) if total_requests else 0
                 stats.append({
                     "method": metric["method"],
                     "name": metric["name"],
                     "num_requests": total_requests,
                     "num_failures": total_failures,
+                    "success_ratio": round(endpoint_success_ratio, 4),
                     "min_response_time": round(min(response_times), 2) if response_times else 0,
                     "max_response_time": round(max(response_times), 2) if response_times else 0,
                     "current_rps": float(metric["window_requests"]),
@@ -89,6 +118,9 @@ class LocalMetricsAggregator:
                         (sum(content_lengths) / len(content_lengths)) if content_lengths else 0,
                         2,
                     ),
+                    "status_code_counts": dict(metric["status_code_counts"]),
+                    "error_type_counts": dict(metric["error_type_counts"]),
+                    "latest_error": metric["latest_error"],
                     "response_time_percentile_0.95": round(self._percentile(response_times, 0.95), 2),
                     "response_time_percentile_0.99": round(self._percentile(response_times, 0.99), 2),
                 })
@@ -104,6 +136,9 @@ class LocalMetricsAggregator:
                 "avg_rt": round(avg_rt, 2),
                 "p95": round(p95, 2),
                 "p99": round(p99, 2),
+                "status_code_counts": dict(self.status_code_counts),
+                "error_type_counts": dict(self.error_type_counts),
+                "failure_samples": list(self.failure_samples),
                 "latest_error": latest_error,
                 "stats": stats,
             }

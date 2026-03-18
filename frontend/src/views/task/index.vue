@@ -498,7 +498,6 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive } from 'vue'
-import dayjs from 'dayjs'
 import { useRouter } from 'vue-router'
 import {
   Card as ACard,
@@ -541,6 +540,7 @@ import { TaskApi } from '@/api/task'
 import { ProjectApi } from '@/api/project'
 import { ScenarioApi } from '@/api/scenario'
 import { UserApi } from '@/api/user'
+import { formatDateTime } from '@/utils/tools'
 import type { ProjectInfo } from '@/types/project'
 import type { ScenarioInfo } from '@/types/scenario'
 import type { UserOption } from '@/types/user'
@@ -636,13 +636,6 @@ const columns = [
   { title: '结束时间', key: 'finished_at', width: 180 },
   { title: '操作', key: 'actions', width: 220, fixed: 'right' },
 ]
-
-const formatDateTime = (value?: string | null) => {
-  if (!value || !dayjs(value).isValid()) {
-    return '-'
-  }
-  return dayjs(value).format('YYYY-MM-DD HH:mm:ss')
-}
 
 const syncScenarioOrders = () => {
   state.formData.scenarios = state.formData.scenarios.map((item, index) => ({

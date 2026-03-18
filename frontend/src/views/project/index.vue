@@ -920,7 +920,7 @@ const handlePageChange = (page: number, pageSize: number) => {
       :title="state.modalTitle"
       width="720px"
       :open="state.modalVisible"
-      :close="handleOnCloseDrawer"
+      @close="handleOnCloseDrawer"
     >
       <a-form layout="vertical">
         <a-form-item label="项目名称" required>
@@ -1059,7 +1059,7 @@ const handlePageChange = (page: number, pageSize: number) => {
       title="项目详情"
       width="760px"
       :open="state.detailVisible"
-      :close="handleCloseDetailDrawer"
+      @close="handleCloseDetailDrawer"
     >
       <div v-if="state.detailLoading" class="detail-loading">
         <a-spin tip="项目详情加载中..." />

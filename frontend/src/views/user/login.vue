@@ -234,8 +234,8 @@ export default defineComponent({
 
     const userStore = useUserStore()
     const formState = reactive<FormState>({
-      username: '',
-      password: '',
+      username: 'admin',
+      password: '123456',
       remember: false
     })
 

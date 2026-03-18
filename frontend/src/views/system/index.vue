@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import UserManagementPanel from '@/views/system/components/UserManagementPanel.vue'
 import SystemConfigPanel from '@/views/system/components/SystemConfigPanel.vue'
+import UserManagementPanel from '@/views/system/components/UserManagementPanel.vue'
+import WorkerManagementPanel from '@/views/system/components/WorkerManagementPanel.vue'
 import { useUserStore } from '@/store/modules/user'
 
 const userStore = useUserStore()
@@ -10,18 +11,26 @@ const activeKey = ref(userStore.userInfo?.is_admin ? 'users' : 'config')
 const tabs = computed(() => {
   const items = [
     {
+      key: 'workers',
+      label: '节点管理',
+      component: WorkerManagementPanel,
+    },
+    {
       key: 'config',
-      label: '系统设置',
+      label: '系统配置',
       component: SystemConfigPanel,
     },
+
   ]
 
   if (userStore.userInfo?.is_admin) {
-    items.unshift({
-      key: 'users',
-      label: '用户管理',
-      component: UserManagementPanel,
-    })
+    items.unshift(
+      {
+        key: 'users',
+        label: '用户管理',
+        component: UserManagementPanel,
+      },
+    )
   }
 
   return items
@@ -36,8 +45,8 @@ const currentPanel = computed(() => {
   <div class="system-page">
     <div class="page-header">
       <div>
-        <h1>设置中心</h1>
-        <p>用户管理和系统配置统一收敛到这里，避免新增顶级导航。</p>
+        <h1>系统设置</h1>
+        <p>统一管理平台配置、账号权限和执行节点。</p>
       </div>
     </div>
 

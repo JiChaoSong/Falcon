@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package falcon.runtime;
+
+message CommandAck {
+  bool accepted = 1;
+  string message = 2;
+  string worker_id = 3;
+  string worker_task_id = 4;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  string worker_id = 1;
+  string host = 2;
+  int32 port = 3;
+  bool healthy = 4;
+  int32 running_tasks = 5;
+}
+
+message TaskDefinition {
+  int64 task_id = 1;
+  int64 task_run_id = 2;
+  string task_name = 3;
+  string host = 4;
+  int32 users = 5;
+  int32 spawn_rate = 6;
+  int32 duration = 7;
+  string execution_strategy = 8;
+  string execution_plan_json = 9;
+  string control_plane_addr = 10;
+}
+
+message StartTaskRequest {
+  string worker_task_id = 1;
+  TaskDefinition task = 2;
+}
+
+message StopTaskRequest {
+  int64 task_id = 1;
+  int64 task_run_id = 2;
+  string worker_task_id = 3;
+}
+
+message TaskEventRequest {
+  string worker_id = 1;
+  string worker_task_id = 2;
+  int64 task_id = 3;
+  int64 task_run_id = 4;
+  string event_type = 5;
+  string status = 6;
+  string started_at = 7;
+  string finished_at = 8;
+  int32 runtime_seconds = 9;
+  int32 active_users = 10;
+  string latest_error = 11;
+  string summary_json = 12;
+  string metric_json = 13;
+}
+
+message WorkerRegisterRequest {
+  string token = 1;
+  string worker_id = 2;
+  string host = 3;
+  int32 port = 4;
+  string version = 5;
+  int32 capacity = 6;
+  int32 scheduling_weight = 7;
+  repeated string tags = 8;
+  string metadata_json = 9;
+}
+
+message WorkerHeartbeatRequest {
+  string token = 1;
+  string worker_id = 2;
+  int32 running_tasks = 3;
+  int32 capacity = 4;
+  repeated string tags = 5;
+  string metadata_json = 6;
+  string version = 7;
+  string last_seen_error = 8;
+}
+
+service WorkerRuntime {
+  rpc StartTask(StartTaskRequest) returns (CommandAck);
+  rpc StopTask(StopTaskRequest) returns (CommandAck);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+service ControlPlaneRuntime {
+  rpc ReportTaskEvent(TaskEventRequest) returns (CommandAck);
+  rpc RegisterWorker(WorkerRegisterRequest) returns (CommandAck);
+  rpc HeartbeatWorker(WorkerHeartbeatRequest) returns (CommandAck);
+}

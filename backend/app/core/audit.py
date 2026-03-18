@@ -8,11 +8,10 @@
     Desc  :     
 --------------------------------------
 """
-from datetime import datetime
-
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Mapper, Session
 from app.decorators.audit import get_current_user
+from app.utils.time_utils import utc_now
 
 import logging
 logger = logging.getLogger(__name__)
@@ -25,7 +24,7 @@ def register_audit_listeners(base):
     @event.listens_for(base, "before_insert", propagate=True)
     def before_insert(mapper: Mapper, connection, target):
         uid, uname = get_current_user()
-        current_time = datetime.now()
+        current_time = utc_now()
 
         # 设置时间字段
         if hasattr(target, "created_at"):
@@ -52,7 +51,7 @@ def register_audit_listeners(base):
     @event.listens_for(base, "before_update", propagate=True)
     def before_update(mapper, connection, target):
         uid, uname = get_current_user()
-        current_time = datetime.now()
+        current_time = utc_now()
 
         def has_attr(name):
             return hasattr(target, name)

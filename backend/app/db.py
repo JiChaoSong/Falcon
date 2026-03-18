@@ -1,11 +1,20 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import declarative_base, sessionmaker
+
 from app.core.config import settings
+
 # =============================
 # Database Configuration
 # =============================
 
-# 推荐：后续从 env / config 中读取
+database_url = make_url(settings.DATABASE_URL)
+connect_args: dict[str, str] = {}
+
+if database_url.get_backend_name().startswith("mysql"):
+    # Keep every DB session in UTC so server-side NOW()/CURRENT_TIMESTAMP
+    # and application-side aware datetimes represent the same instant.
+    connect_args["init_command"] = "SET time_zone = '+00:00'"
 
 # =============================
 # Engine
@@ -18,7 +27,8 @@ engine = create_engine(
     pool_recycle=settings.POOL_RECYCLE,
     pool_timeout=settings.POOL_TIMEOUT,
     pool_reset_on_return="rollback",
-    echo=settings.DB_ECHO,  # 生产环境关闭
+    connect_args=connect_args,
+    echo=settings.DB_ECHO,
 )
 
 # =============================
@@ -37,9 +47,6 @@ SessionLocal = sessionmaker(
 
 Base = declarative_base()
 
-# =============================
-# Dependency (FastAPI)
-# =============================
 
 def get_db():
     db = SessionLocal()
@@ -48,14 +55,8 @@ def get_db():
     finally:
         db.close()
 
-# =============================
-# Init DB
-# =============================
 
 def init_db():
-    """
-    在 main.py / alembic 之前调用
-    """
     import app.models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
