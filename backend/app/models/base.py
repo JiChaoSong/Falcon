@@ -18,6 +18,7 @@ from sqlalchemy.orm import declarative_base, Mapped, mapped_column, declared_att
 from app.db import Base
 from app.decorators.audit import get_current_user
 from app.utils.id_generator import generate_id
+from app.utils.time_utils import utc_now
 
 
 class BaseModel(Base):
@@ -133,7 +134,7 @@ class BaseModel(Base):
         uid, uname = get_current_user()
 
         self.is_deleted = True
-        self.deleted_at = datetime.now()
+        self.deleted_at = utc_now()
 
         if hasattr(self, "deleted_by"):
             self.deleted_by = uid

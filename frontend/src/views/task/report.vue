@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { TaskApi } from '@/api/task'
 import type { TaskReportData, TaskRunHistoryItem } from '@/types/task'
-import { formatNumber, formatPercent } from '@/utils/tools'
+import { downloadTextFile, formatDateTime, formatNumber, formatPercent, formatTimeOnly } from '@/utils/tools'
 
 const EChartPanel = defineAsyncComponent(() => import('@/components/EChartPanel.vue'))
 
@@ -44,7 +44,7 @@ const chartConfigs = computed(() => {
       fill: 'rgba(37, 99, 235, 0.12)',
       legend: ['RPS'],
       values: history.map(item => item.rps),
-      labels: history.map(item => new Date(item.ts).toLocaleTimeString()),
+      labels: history.map(item => formatTimeOnly(item.ts)),
     },
     {
       key: 'rt',
@@ -56,10 +56,44 @@ const chartConfigs = computed(() => {
       values: history.map(item => item.avg_rt),
       compareValues: history.map(item => item.p95),
       compareStroke: '#dc2626',
-      labels: history.map(item => new Date(item.ts).toLocaleTimeString()),
+      labels: history.map(item => formatTimeOnly(item.ts)),
+    },
+    {
+      key: 'fail',
+      title: '失败趋势',
+      subtitle: '每秒失败数和成功率变化',
+      stroke: '#dc2626',
+      fill: 'rgba(220, 38, 38, 0.12)',
+      legend: ['Fails/s', 'Success %'],
+      values: history.map(item => item.fail_count),
+      compareValues: history.map(item => {
+        const total = item.success_count + item.fail_count
+        return total ? Number(((item.success_count / total) * 100).toFixed(2)) : 100
+      }),
+      compareAxisIndex: 1,
+      compareStroke: '#0f766e',
+      labels: history.map(item => formatTimeOnly(item.ts)),
     },
   ]
 })
+
+const statusCodeChart = computed(() => {
+  const entries = Object.entries(safeReport.value?.status_code_counts || {}).sort((a, b) => Number(a[0]) - Number(b[0]))
+  return {
+    labels: entries.map(([code]) => code),
+    values: entries.map(([, count]) => count),
+  }
+})
+
+const errorTypeChart = computed(() => {
+  const entries = Object.entries(safeReport.value?.error_type_counts || {}).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  return {
+    labels: entries.map(([label]) => label),
+    values: entries.map(([, count]) => count),
+  }
+})
+
+const failureSamples = computed(() => (safeReport.value?.failure_samples || []).slice(0, 8))
 
 const statsColumns = [
   { title: '方法', dataIndex: 'method', key: 'method' },
@@ -129,6 +163,55 @@ const goBack = () => {
   router.push(`/monitor/${taskId.value}`)
 }
 
+const downloadStatsCsv = () => {
+  if (!safeReport.value) {
+    return
+  }
+
+  const headers = [
+    'method',
+    'name',
+    'num_requests',
+    'num_failures',
+    'success_ratio',
+    'avg_response_time',
+    'p95',
+    'p99',
+    'current_rps',
+    'latest_error',
+  ]
+
+  const rows = (safeReport.value.stats || []).map((item: Record<string, unknown>) => [
+    item.method,
+    `"${String(item.name || '').replaceAll('"', '""')}"`,
+    item.num_requests,
+    item.num_failures,
+    item.success_ratio ?? '',
+    item.avg_response_time,
+    item['response_time_percentile_0.95'] ?? '',
+    item['response_time_percentile_0.99'] ?? '',
+    item.current_rps,
+    `"${String(item.latest_error || '').replaceAll('"', '""')}"`,
+  ].join(','))
+
+  downloadTextFile(
+    `task-report-${safeReport.value.task_id}-${safeReport.value.task_run_id || 'latest'}.csv`,
+    [headers.join(','), ...rows].join('\n'),
+    'text/csv;charset=utf-8'
+  )
+}
+
+const downloadSummaryJson = () => {
+  if (!safeReport.value) {
+    return
+  }
+  downloadTextFile(
+    `task-report-${safeReport.value.task_id}-${safeReport.value.task_run_id || 'latest'}.json`,
+    JSON.stringify(safeReport.value, null, 2),
+    'application/json;charset=utf-8'
+  )
+}
+
 watch(
   () => route.query.taskRunId,
   async (value) => {
@@ -157,6 +240,8 @@ onMounted(async () => {
       </div>
       <div class="report-actions">
         <a-button @click="goBack">返回监控</a-button>
+        <a-button @click="downloadStatsCsv" :disabled="!safeReport">下载 CSV</a-button>
+        <a-button @click="downloadSummaryJson" :disabled="!safeReport">下载 JSON</a-button>
         <a-button type="primary" :loading="loading" @click="refreshPage">刷新报告</a-button>
       </div>
     </div>
@@ -215,6 +300,18 @@ onMounted(async () => {
               <span class="base-label">场景数量</span>
               <span class="base-value">{{ safeReport.scenario_count }}</span>
             </div>
+            <div class="base-item">
+              <span class="base-label">开始时间</span>
+              <span class="base-value">{{ formatDateTime(safeReport.started_at) }}</span>
+            </div>
+            <div class="base-item">
+              <span class="base-label">结束时间</span>
+              <span class="base-value">{{ formatDateTime(safeReport.finished_at) }}</span>
+            </div>
+            <div class="base-item">
+              <span class="base-label">运行时长</span>
+              <span class="base-value">{{ safeReport.runtime_seconds }}s</span>
+            </div>
           </div>
         </a-card>
 
@@ -270,11 +367,51 @@ onMounted(async () => {
                     data: chart.compareValues,
                     color: chart.compareStroke,
                     dashed: true,
+                    yAxisIndex: chart.compareAxisIndex ?? 0,
                   }]
                 : [])
             ]"
           />
         </section>
+
+        <section class="chart-grid" v-if="statusCodeChart.labels.length || errorTypeChart.labels.length">
+          <EChartPanel
+            v-if="statusCodeChart.labels.length"
+            title="状态码分布"
+            subtitle="按响应状态码查看整体流量质量"
+            :labels="statusCodeChart.labels"
+            :legend="['响应数']"
+            :series="[{ name: '响应数', data: statusCodeChart.values, color: '#2563eb' }]"
+            mode="bar"
+            :height="240"
+          />
+          <EChartPanel
+            v-if="errorTypeChart.labels.length"
+            title="错误类型分布"
+            subtitle="查看断言失败、慢响应、状态异常的占比"
+            :labels="errorTypeChart.labels"
+            :legend="['错误数']"
+            :series="[{ name: '错误数', data: errorTypeChart.values, color: '#dc2626' }]"
+            mode="bar"
+            :height="240"
+          />
+        </section>
+
+        <a-card title="失败样本" v-if="failureSamples.length">
+          <div class="failure-list">
+            <div class="failure-item" v-for="(item, index) in failureSamples" :key="`${item.name}-${index}`">
+              <div class="failure-main">
+                <span class="failure-method">{{ item.method || 'REQ' }}</span>
+                <span class="failure-name">{{ item.name || '-' }}</span>
+              </div>
+              <div class="failure-meta">
+                <span>状态 {{ item.status_code || 0 }}</span>
+                <span>{{ item.error_type || 'request_failed' }}</span>
+              </div>
+              <div class="failure-message">{{ item.message || '未知错误' }}</div>
+            </div>
+          </div>
+        </a-card>
 
         <a-card title="接口明细" :loading="loading">
           <a-table
@@ -355,6 +492,58 @@ onMounted(async () => {
   text-align: left;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.failure-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.failure-item {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f7faff;
+}
+
+.failure-main,
+.failure-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.failure-method {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.failure-name {
+  flex: 1;
+  font-weight: 600;
+  color: #183153;
+}
+
+.failure-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #b42318;
+}
+
+.failure-message {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6a7b92;
+  line-height: 1.6;
 }
 
 .history-item:hover,

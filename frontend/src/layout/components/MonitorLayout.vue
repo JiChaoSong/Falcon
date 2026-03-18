@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import LogoComponent from "@/layout/components/LogoComponent.vue";
 import MonitorComponent from "@/layout/components/MonitorComponent.vue";
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import EChartPanel from "@/components/EChartPanel.vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { MetricHistoryPoint, Metrics, STATE_COLORS, STATE_NAMES, Stats, SystemState } from "@/layout/type.ts";
 import { message, Modal } from "ant-design-vue";
-import { formatNumber, formatPercent } from "@/utils/tools";
+import { formatDateTime, formatNumber, formatPercent } from "@/utils/tools";
 import { TaskApi } from "@/api/task";
 import type { TaskInfo, TaskReportData, TaskRunHistoryItem, TaskRuntimeStatus } from "@/types/task";
+import { getToken } from "@/utils/auth";
+import { taskRuntimeSocket, type TaskRuntimeSocketMessage } from "@/utils/websocket";
 
 type MonitorRiskLevel = "success" | "warning" | "danger";
 
@@ -25,6 +28,7 @@ const router = useRouter();
 const loading = ref(false);
 const controlLoading = ref(false);
 const taskRunning = ref(false);
+const wsConnected = ref(false);
 const currentTaskId = ref<number>(Number(route.params.taskId) || 0);
 
 const defaultMetric: Metrics = {
@@ -39,6 +43,9 @@ const defaultMetric: Metrics = {
   start_time: '--',
   runtime: '--',
   runtime_seconds: 0,
+  status_code_counts: {},
+  error_type_counts: {},
+  failure_samples: [],
 };
 
 const defaultTaskInfo: TaskInfo = {
@@ -76,7 +83,7 @@ const selectedTaskRunId = ref<number | null>(null);
 const dataSource = ref<Stats[]>([]);
 const metrics = ref<Metrics>({ ...defaultMetric });
 const metricHistory = ref<MetricHistoryPoint[]>([]);
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+let lastReportRefreshAt = 0;
 
 const safeMetrics = computed(() => metrics.value || defaultMetric);
 const safeTaskInfo = computed(() => taskInfo.value || defaultTaskInfo);
@@ -181,6 +188,43 @@ const hotEndpoints = computed(() => {
       }));
 });
 
+const statusCodeChart = computed(() => {
+  const counts = safeTaskReport.value?.status_code_counts || safeMetrics.value.status_code_counts || {};
+  const entries = Object.entries(counts).sort((a, b) => Number(a[0]) - Number(b[0]));
+  return {
+    labels: entries.map(([code]) => code),
+    values: entries.map(([, count]) => count),
+  };
+});
+
+const errorTypeChart = computed(() => {
+  const counts = safeTaskReport.value?.error_type_counts || safeMetrics.value.error_type_counts || {};
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  return {
+    labels: entries.map(([type]) => type),
+    values: entries.map(([, count]) => count),
+  };
+});
+
+const runtimeQualityCards = computed(() => {
+  const report = safeTaskReport.value;
+  const statusCodes = Object.keys(report?.status_code_counts || {}).length;
+  const errorTypes = Object.keys(report?.error_type_counts || {}).length;
+  const failures = report?.failure_samples?.length || 0;
+  const latestRun = selectedTaskRun.value;
+
+  return [
+    { title: '状态码种类', value: String(statusCodes), tone: 'default', hint: '响应分布' },
+    { title: '错误类型', value: String(errorTypes), tone: 'warning', hint: '失败分类' },
+    { title: '失败样本', value: String(failures), tone: 'danger', hint: '最近 20 条' },
+    { title: '当前实例', value: latestRun ? `#${latestRun.id}` : '-', tone: 'success', hint: formatDateTime(latestRun?.started_at) },
+  ];
+});
+
+const failureSamples = computed(() => {
+  return (safeTaskReport.value?.failure_samples || []).slice(0, 5) as Array<Record<string, unknown>>;
+});
+
 const getStatusName = (state: SystemState): string => {
   return STATE_NAMES[state] || "未知状态";
 };
@@ -272,6 +316,9 @@ const applyRuntimeStatus = (runtime: TaskRuntimeStatus) => {
     start_time: runtime.started_at || '--',
     runtime: buildRuntime(runtime.runtime_seconds || 0),
     runtime_seconds: runtime.runtime_seconds || 0,
+    status_code_counts: runtime.status_code_counts || {},
+    error_type_counts: runtime.error_type_counts || {},
+    failure_samples: runtime.failure_samples || [],
   };
   metricHistory.value = runtime.history.map(item => ({
     time: buildRuntime(
@@ -316,11 +363,24 @@ const fetchTaskRuns = async () => {
 };
 
 const fetchTaskReport = async () => {
+  if (!currentTaskId.value || !selectedTaskRunId.value) {
+    taskReport.value = null;
+    return;
+  }
   const response = await TaskApi.getTaskReport({
     task_id: currentTaskId.value,
     task_run_id: selectedTaskRunId.value,
   });
   taskReport.value = response.data;
+};
+
+const refreshReportIfNeeded = async (force = false) => {
+  const now = Date.now();
+  if (!force && now - lastReportRefreshAt < 10000) {
+    return;
+  }
+  await fetchTaskReport();
+  lastReportRefreshAt = now;
 };
 
 const handleSelectTaskRun = async (taskRunId: number) => {
@@ -352,13 +412,44 @@ const refreshMonitorData = async (showError = true) => {
   }
 };
 
-const startPolling = () => {
-  if (pollTimer) {
-    clearInterval(pollTimer);
+const connectRuntimeSocket = () => {
+  const token = getToken();
+  if (!currentTaskId.value || !token) {
+    return;
   }
-  pollTimer = setInterval(() => {
-    void refreshMonitorData(false);
-  }, 2000);
+
+  taskRuntimeSocket.connect(currentTaskId.value, token);
+};
+
+const handleRuntimeSocketMessage = async (payload: TaskRuntimeSocketMessage) => {
+  if (payload.task_id !== currentTaskId.value) {
+    return;
+  }
+
+  try {
+    if (payload.event === 'connected') {
+      await Promise.all([fetchTaskStatus(), fetchTaskRuns()]);
+      await refreshReportIfNeeded(true);
+      return;
+    }
+
+    await fetchTaskStatus();
+
+    if (payload.event === 'started' || payload.event === 'finished' || payload.event === 'failed') {
+      await fetchTaskRuns();
+      if (taskRuns.value.length) {
+        selectedTaskRunId.value = taskRuns.value[0].id;
+      }
+      await refreshReportIfNeeded(true);
+      return;
+    }
+
+    if (payload.event === 'snapshot') {
+      await refreshReportIfNeeded(false);
+    }
+  } catch (error) {
+    console.error('Failed to sync runtime data from websocket message:', error);
+  }
 };
 
 const handleStartTest = () => {
@@ -377,6 +468,7 @@ const handleStartTest = () => {
       try {
         await TaskApi.runTask({ task_id: currentTaskId.value });
         await refreshMonitorData(false);
+        connectRuntimeSocket();
         message.success("任务已开始执行");
       } finally {
         controlLoading.value = false;
@@ -427,14 +519,30 @@ const openFullReport = () => {
 };
 
 onMounted(async () => {
+  taskRuntimeSocket.setOnConnectionChange((connected) => {
+    wsConnected.value = connected;
+  });
+  taskRuntimeSocket.setOnMessage((payload) => {
+    void handleRuntimeSocketMessage(payload);
+  });
+  taskRuntimeSocket.setOnError((event) => {
+    console.error('Task runtime websocket failed to connect:', event);
+  });
+  connectRuntimeSocket();
   await refreshMonitorData();
-  startPolling();
 });
 
-onUnmounted(() => {
-  if (pollTimer) {
-    clearInterval(pollTimer);
+watch(
+  () => route.params.taskId,
+  (value) => {
+    currentTaskId.value = Number(value) || 0;
+    taskRuntimeSocket.disconnect();
+    connectRuntimeSocket();
   }
+);
+
+onUnmounted(() => {
+  taskRuntimeSocket.disconnect();
 });
 </script>
 
@@ -564,78 +672,111 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="endpoint-card report-card-lite">
-        <div class="endpoint-head">
+    </section>
+
+    <section class="report-overview" v-if="safeTaskReport" v-show="false">
+      <div class="report-overview-card">
+        <div class="report-overview-head">
           <div>
             <div class="ai-eyebrow">运行报告</div>
-            <div class="endpoint-subtitle">任务结束后可作为基础复盘摘要</div>
+            <div class="report-overview-title">全局报告概览</div>
           </div>
-          <a-button size="small" @click="openFullReport">完整报告</a-button>
+          <a-button type="link" @click="openFullReport">进入完整报告</a-button>
         </div>
 
-        <div class="report-lite-grid" v-if="safeTaskReport">
-          <div class="report-lite-item">
-            <span class="report-lite-label">运行实例</span>
-            <span class="report-lite-value">{{ safeTaskReport.task_run_id || '-' }}</span>
+        <div class="report-overview-grid">
+          <div class="report-overview-item">
+            <span class="report-overview-label">运行实例</span>
+            <span class="report-overview-value">#{{ safeTaskReport.task_run_id || '-' }}</span>
           </div>
-          <div class="report-lite-item">
-            <span class="report-lite-label">执行策略</span>
-            <span class="report-lite-value">{{ safeTaskInfo.execution_strategy || '-' }}</span>
+          <div class="report-overview-item">
+            <span class="report-overview-label">成功率</span>
+            <span class="report-overview-value">{{ formatPercent(safeTaskReport.success_ratio) }}</span>
           </div>
-          <div class="report-lite-item">
-            <span class="report-lite-label">场景数量</span>
-            <span class="report-lite-value">{{ safeTaskReport.scenario_count }}</span>
+          <div class="report-overview-item">
+            <span class="report-overview-label">总请求数</span>
+            <span class="report-overview-value">{{ formatNumber(safeTaskReport.total_requests, '0') }}</span>
           </div>
-          <div class="report-lite-item">
-            <span class="report-lite-label">成功率</span>
-            <span class="report-lite-value">{{ formatPercent(safeTaskReport.success_ratio) }}</span>
+          <div class="report-overview-item">
+            <span class="report-overview-label">失败数</span>
+            <span class="report-overview-value danger">{{ formatNumber(safeTaskReport.fail_count, '0') }}</span>
           </div>
-          <div class="report-lite-item">
-            <span class="report-lite-label">最高吞吐接口</span>
-            <span class="report-lite-value">{{ safeTaskReport.hottest_endpoint?.name || '-' }}</span>
+          <div class="report-overview-item">
+            <span class="report-overview-label">平均响应</span>
+            <span class="report-overview-value">{{ formatNumber(safeTaskReport.avg_rt) }} ms</span>
           </div>
-          <div class="report-lite-item">
-            <span class="report-lite-label">风险接口</span>
-            <span class="report-lite-value danger">{{ safeTaskReport.riskiest_endpoint?.name || '-' }}</span>
+          <div class="report-overview-item">
+            <span class="report-overview-label">P95 / P99</span>
+            <span class="report-overview-value">{{ formatNumber(safeTaskReport.p95) }} / {{ formatNumber(safeTaskReport.p99) }} ms</span>
           </div>
-          <div class="report-lite-item full">
-            <span class="report-lite-label">最近错误</span>
-            <span class="report-lite-value danger">{{ safeTaskReport.latest_error || '无' }}</span>
+          <div class="report-overview-item wide">
+            <span class="report-overview-label">最高吞吐接口</span>
+            <span class="report-overview-value">{{ safeTaskReport.hottest_endpoint?.name || '-' }}</span>
+          </div>
+          <div class="report-overview-item wide">
+            <span class="report-overview-label">最高风险接口</span>
+            <span class="report-overview-value danger">{{ safeTaskReport.riskiest_endpoint?.name || '-' }}</span>
           </div>
         </div>
 
-        <div class="run-history" v-if="taskRuns.length">
-          <div class="run-history-head">
-            <span class="run-history-title">最近运行</span>
-            <span class="run-history-hint">点击切换报告实例</span>
-          </div>
-          <div class="run-history-list">
-            <button
-              v-for="item in taskRuns"
-              :key="item.id"
-              class="run-history-item"
-              :class="{ active: item.id === selectedTaskRunId }"
-              type="button"
-              @click="handleSelectTaskRun(item.id)"
-            >
-              <div class="run-history-main">
-                <span class="run-history-id">#{{ item.id }}</span>
-                <a-tag :color="getStatusColor(mapTaskStatusToSystemState(item.status))">
-                  {{ item.status }}
-                </a-tag>
+        <div class="report-overview-bottom">
+          <div class="report-bottom-panel">
+            <div class="report-bottom-title">状态码分布</div>
+            <div class="report-bottom-list" v-if="statusCodeChart.labels.length">
+              <div class="report-bottom-row" v-for="(label, index) in statusCodeChart.labels" :key="label">
+                <span>{{ label }}</span>
+                <span>{{ statusCodeChart.values[index] }}</span>
               </div>
-              <div class="run-history-meta">
-                <span>请求 {{ item.total_requests }}</span>
-                <span>成功率 {{ formatPercent(item.success_ratio) }}</span>
-                <span>时长 {{ buildRuntime(item.runtime_seconds || 0) }}</span>
-              </div>
-            </button>
+            </div>
+            <div class="report-bottom-empty" v-else>暂无状态码统计</div>
           </div>
-          <div class="run-history-error" v-if="selectedTaskRun?.latest_error">
-            最近错误: {{ selectedTaskRun.latest_error }}
+
+          <div class="report-bottom-panel">
+            <div class="report-bottom-title">错误类型分布</div>
+            <div class="report-bottom-list" v-if="errorTypeChart.labels.length">
+              <div class="report-bottom-row" v-for="(label, index) in errorTypeChart.labels" :key="label">
+                <span>{{ label }}</span>
+                <span>{{ errorTypeChart.values[index] }}</span>
+              </div>
+            </div>
+            <div class="report-bottom-empty" v-else>暂无错误类型统计</div>
+          </div>
+
+          <div class="report-bottom-panel">
+            <div class="report-bottom-title">失败样本</div>
+            <div class="report-bottom-list" v-if="failureSamples.length">
+              <div class="report-bottom-row report-bottom-row-stack" v-for="(item, index) in failureSamples.slice(0, 3)" :key="`${item.name}-${index}`">
+                <span class="report-bottom-strong">{{ item.name || '-' }}</span>
+                <span>{{ item.error_type || 'request_failed' }}</span>
+              </div>
+            </div>
+            <div class="report-bottom-empty" v-else>当前运行没有失败样本</div>
           </div>
         </div>
       </div>
+    </section>
+
+    <section class="chart-strip" v-if="statusCodeChart.labels.length || errorTypeChart.labels.length">
+      <EChartPanel
+          v-if="statusCodeChart.labels.length"
+          title="状态码分布"
+          subtitle="帮助判断业务异常与网关异常的边界"
+          :labels="statusCodeChart.labels"
+          :legend="['响应数']"
+          :series="[{ name: '响应数', data: statusCodeChart.values, color: '#2563eb' }]"
+          mode="bar"
+          :height="220"
+      />
+      <EChartPanel
+          v-if="errorTypeChart.labels.length"
+          title="错误类型分布"
+          subtitle="查看慢响应、断言失败、状态码异常的占比"
+          :labels="errorTypeChart.labels"
+          :legend="['错误数']"
+          :series="[{ name: '错误数', data: errorTypeChart.values, color: '#dc2626' }]"
+          mode="bar"
+          :height="220"
+      />
     </section>
 
     <MonitorComponent
@@ -744,8 +885,22 @@ onUnmounted(() => {
   margin-bottom: 18px;
 }
 
+.quality-panel,
+.chart-strip,
+.report-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.report-overview {
+  grid-template-columns: 1fr;
+}
+
 .ai-card,
-.endpoint-card {
+.endpoint-card,
+.quality-card {
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(20, 86, 163, 0.08);
   border-radius: 18px;
@@ -759,6 +914,128 @@ onUnmounted(() => {
 
 .endpoint-card {
   padding: 18px;
+}
+
+.quality-card {
+  padding: 18px;
+}
+
+.report-overview-card {
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(20, 86, 163, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 12px 32px rgba(32, 60, 96, 0.08);
+}
+
+.report-overview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.report-overview-title {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #10233f;
+}
+
+.report-overview-subtitle {
+  margin-top: 6px;
+  color: #6a7b92;
+  font-size: 13px;
+}
+
+.report-overview-grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.report-overview-item {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f7faff;
+}
+
+.report-overview-item.wide {
+  grid-column: span 2;
+}
+
+.report-overview-label,
+.report-bottom-empty {
+  color: #73839a;
+}
+
+.report-overview-label {
+  display: block;
+  font-size: 12px;
+}
+
+.report-overview-value {
+  display: block;
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #183153;
+}
+
+.report-overview-value.danger {
+  color: #b42318;
+}
+
+.report-overview-bottom {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.report-bottom-panel {
+  padding: 16px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fbfdff 0%, #f5f9ff 100%);
+  border: 1px solid rgba(20, 86, 163, 0.08);
+}
+
+.report-bottom-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #183153;
+}
+
+.report-bottom-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.report-bottom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: #4a5c76;
+}
+
+.report-bottom-row-stack {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.report-bottom-strong {
+  color: #10233f;
+  font-weight: 600;
+}
+
+.report-bottom-empty {
+  margin-top: 12px;
+  font-size: 13px;
 }
 
 .ai-card-head,
@@ -840,6 +1117,112 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.quality-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quality-title {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #183153;
+}
+
+.quality-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.quality-metric {
+  padding: 14px;
+  border-radius: 14px;
+  background: #f7faff;
+}
+
+.quality-metric[data-tone='warning'] {
+  background: #fff7ed;
+}
+
+.quality-metric[data-tone='danger'] {
+  background: #fef2f2;
+}
+
+.quality-metric[data-tone='success'] {
+  background: #ecfdf5;
+}
+
+.quality-metric-title,
+.quality-metric-hint,
+.failure-message,
+.failure-empty {
+  color: #6a7b92;
+}
+
+.quality-metric-title {
+  font-size: 12px;
+}
+
+.quality-metric-value {
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 700;
+  color: #10233f;
+}
+
+.quality-metric-hint {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.failure-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.failure-row {
+  padding: 14px;
+  border-radius: 14px;
+  background: #f7faff;
+}
+
+.failure-main,
+.failure-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.failure-name {
+  flex: 1;
+  color: #183153;
+  font-weight: 600;
+}
+
+.failure-meta {
+  margin-top: 8px;
+  color: #b42318;
+  font-size: 12px;
+}
+
+.failure-message {
+  margin-top: 8px;
+  line-height: 1.6;
+  font-size: 12px;
+}
+
+.failure-empty {
+  margin-top: 16px;
+  font-size: 13px;
 }
 
 .report-card-lite {
@@ -1037,7 +1420,10 @@ onUnmounted(() => {
   }
 
   .ai-panel,
-  .ai-grid {
+  .ai-grid,
+  .quality-panel,
+  .chart-strip,
+  .report-overview-bottom {
     grid-template-columns: 1fr;
   }
 }
@@ -1066,6 +1452,22 @@ onUnmounted(() => {
 
   .report-lite-grid {
     grid-template-columns: 1fr;
+  }
+
+  .quality-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .report-overview-head {
+    flex-direction: column;
+  }
+
+  .report-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .report-overview-item.wide {
+    grid-column: auto;
   }
 }
 </style>

@@ -146,11 +146,11 @@
       </Table>
     </ACard>
 
-    <div class="pagination-container" v-if="state.total > 0">
+    <div class="pagination-container" v-if="paginationTotal > 0">
       <Pagination
         v-model:current="state.currentPage"
         v-model:pageSize="state.pageSize"
-        :total="state.total"
+        :total="paginationTotal"
         :page-size-options="['8', '16', '24', '48']"
         show-quick-jumper
         show-size-changer
@@ -320,7 +320,7 @@
               :key="`${caseBind.case_id}-${caseBind.order}`"
               class="preview-case-item"
             >
-              <span>{{ getCaseName(caseBind.case_id) }}</span>
+              <span>{{ getCaseName(caseBind.case_id, caseBind.name) }}</span>
               <span class="subtle-text">顺序 {{ caseBind.order }} / 权重 {{ caseBind.weight }}</span>
             </div>
           </div>
@@ -332,7 +332,6 @@
 
 <script setup lang="ts">
 import { onMounted, reactive } from 'vue'
-import dayjs from 'dayjs'
 import {
   Card as ACard,
   Row,
@@ -369,9 +368,10 @@ import {
 import { ScenarioApi } from '@/api/scenario'
 import { ProjectApi } from '@/api/project'
 import { CaseApi } from '@/api/case'
+import { formatDateTime } from '@/utils/tools'
 import type { ProjectInfo } from '@/types/project'
 import type { CaseInfo } from '@/types/case'
-import type { ScenarioCaseBind, ScenarioInfo } from '@/types/scenario'
+import type { ScenarioCaseBind, ScenarioCaseSummary, ScenarioInfo, ScenarioListItem } from '@/types/scenario'
 
 type FormCaseBind = ScenarioCaseBind & { row_key: string }
 
@@ -392,7 +392,7 @@ const createDefaultFormData = () => ({
 })
 
 const state = reactive({
-  scenarios: [] as ScenarioInfo[],
+  scenarios: [] as ScenarioListItem[],
   projectOptions: [] as ProjectInfo[],
   caseOptions: [] as CaseInfo[],
   currentPage: 1,
@@ -434,15 +434,8 @@ const columns = [
   { title: '操作', key: 'actions', width: 180, fixed: 'right' },
 ]
 
-const formatDateTime = (value?: string | null) => {
-  if (!value || !dayjs(value).isValid()) {
-    return '-'
-  }
-  return dayjs(value).format('YYYY-MM-DD HH:mm:ss')
-}
-
-const getCaseName = (caseId: number) => {
-  return state.caseOptions.find(item => item.id === caseId)?.name || `用例 ${caseId}`
+const getCaseName = (caseId: number, fallbackName?: string) => {
+  return fallbackName || state.caseOptions.find(item => item.id === caseId)?.name || `用例 ${caseId}`
 }
 
 const syncCaseMeta = () => {
@@ -481,21 +474,23 @@ const getAvailableCaseOptions = (currentCaseId?: number) => {
   return state.caseOptions.filter(item => !selectedIds.includes(item.id) || item.id === currentCaseId)
 }
 
-const getCaseSummary = (cases: ScenarioCaseBind[]) => {
+const getCaseSummary = (cases: ScenarioCaseSummary[]) => {
   if (!cases?.length) {
     return '暂无关联用例'
   }
   return cases
     .slice(0, 2)
-    .map(item => `${getCaseName(item.case_id)}(${item.weight})`)
+    .map(item => `${getCaseName(item.case_id, item.name)}(${item.weight})`)
     .join('，') + (cases.length > 2 ? ' ...' : '')
 }
 
-const normalizeScenario = (scenario: ScenarioInfo): ScenarioInfo => ({
+const normalizeScenario = <T extends ScenarioInfo | ScenarioListItem>(scenario: T): T => ({
   ...scenario,
   status: scenario.status?.toLowerCase() || 'draft',
   cases: Array.isArray(scenario.cases) ? scenario.cases : [],
-})
+}) as T
+
+const paginationTotal = computed(() => Number(state?.total || 0))
 
 const fetchProjectOptions = async () => {
   const response = await ProjectApi.getProjectList({ page: 1, page_size: 200 })
@@ -525,9 +520,12 @@ const fetchScenarioList = async () => {
       project_id: state.searchFilters.project_id,
       status: state.searchFilters.status || undefined,
     })
-    state.scenarios = response.data.results.map(normalizeScenario)
-    state.total = response.data.total
+    const payload = response?.data || { results: [], total: 0 }
+    state.scenarios = Array.isArray(payload.results) ? payload.results.map(normalizeScenario) : []
+    state.total = Number(payload.total || 0)
   } catch (error) {
+    state.scenarios = []
+    state.total = 0
     console.error('获取场景列表失败:', error)
     message.error('场景列表加载失败，请稍后重试')
   } finally {

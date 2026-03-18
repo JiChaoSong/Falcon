@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, Optional
 
 from pydantic import Field
@@ -16,7 +17,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # FastAPI/Starlette 需要的是 list[str]，这里给出安全默认值
-    CORS_ORIGINS: list[str] = Field(default_factory=list)
+    CORS_ORIGINS: list[str] = Field(default_factory=list) if not DEBUG else ["*"]
     CORS_ORIGIN_WHITELIST: Any = ()
 
     REQUEST_LOGGING: bool = True
@@ -24,6 +25,12 @@ class Settings(BaseSettings):
 
     HOST: str = "127.0.0.1"
     PORT: int = 8008
+    GRPC_CONTROL_HOST: str = "127.0.0.1"
+    GRPC_CONTROL_PORT: int = 50051
+    GRPC_WORKER_ID: str = "worker-local"
+    GRPC_WORKER_HOST: str = "127.0.0.1"
+    GRPC_WORKER_PORT: int = 50061
+    GRPC_WORKERS: str = "127.0.0.1:50061"
 
     DATABASE_URL: str = "mysql+pymysql://root:123456@localhost:3306/perflocust"
 
@@ -56,6 +63,15 @@ class Settings(BaseSettings):
             "/favicon.ico",
         ]
     )
+    CONTROL_PLANE_BASE_URL: str = "http://127.0.0.1:8008"
+    WORKER_SHARED_TOKEN: str = "change-me-worker-token"
+    GRPC_WORKER_TAGS: str = ""
+    GRPC_WORKER_METADATA_JSON: str = "{}"
+    GRPC_WORKER_CAPACITY: int = 4
+    GRPC_WORKER_HEARTBEAT_INTERVAL_SECONDS: int = 5
+    GRPC_WORKER_HEARTBEAT_TIMEOUT_SECONDS: int = 15
+    GRPC_WORKER_HISTORY_RETENTION_SECONDS: int = 86400
+    GRPC_SCHEDULING_STRATEGY: str = "least_loaded"
 
     ERROR_MSG_MAP: Optional[Dict[str, str]] = {
         "no_such_attribute": "属性不存在",
@@ -163,5 +179,41 @@ class Settings(BaseSettings):
         "missing_sentinel_error": "未检测到标记值",
     }
 
+class WorkerSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=(".env.worker", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    PROJECT_NAME: str = "Falcon"
+    VERSION: str = "1.0.0"
+    ENVIRONMENT: str = "local"
+    LOG_LEVEL: str = "INFO"
+
+    CONTROL_PLANE_BASE_URL: str = "http://127.0.0.1:8008"
+    GRPC_CONTROL_HOST: str = "127.0.0.1"
+    GRPC_CONTROL_PORT: int = 50051
+    WORKER_SHARED_TOKEN: str = "change-me-worker-token"
+
+    GRPC_WORKER_ID: str = "worker-local"
+    GRPC_WORKER_HOST: str = "127.0.0.1"
+    GRPC_WORKER_PORT: int = 50061
+    GRPC_WORKER_TAGS: str = ""
+    GRPC_WORKER_METADATA_JSON: str = "{}"
+    GRPC_WORKER_CAPACITY: int = 4
+    GRPC_WORKER_HEARTBEAT_INTERVAL_SECONDS: int = 5
+
 
 settings = Settings()
+
+
+def _resolve_worker_env_file() -> tuple[str, ...]:
+    raw = str(os.getenv("FALCON_WORKER_ENV_FILE", "")).strip()
+    if not raw:
+        return ".env.worker", ".env"
+
+    return tuple(item.strip() for item in raw.split(os.pathsep) if item.strip()) or (".env.worker", ".env")
+
+
+worker_settings = WorkerSettings(_env_file=_resolve_worker_env_file())

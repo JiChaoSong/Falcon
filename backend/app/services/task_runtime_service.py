@@ -1,47 +1,41 @@
-import asyncio
 from typing import Any
 
 from sqlalchemy import Select, false
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.exception import ParamException
-from app.engine_v2.registry.run_registry import TaskRunControl, task_run_registry
-from app.engine_v2.runtime.task_runner import TaskRunner
 from app.models import TaskMetricSecond, TaskRun, TaskRunStatusEnum, Tasks, TaskScenario, TaskStatusEnum
 from app.services.access_control_service import AccessControlService
+from app.services.grpc_worker_dispatcher_service import GrpcWorkerDispatcherService
 
 
 class TaskRuntimeService:
     def __init__(self, db: Session):
         self.db = db
         self.access_control = AccessControlService(db)
-        self.task_runner = TaskRunner()
+        self.dispatcher = GrpcWorkerDispatcherService(db)
 
     def run(self, task_id: int) -> dict[str, Any]:
         task = self._get_task(task_id)
         self.access_control.ensure_project_manage_access(task.project_id)
+        task_run = self._prepare_task_run(task_id)
 
-        current_control = task_run_registry.get(task_id)
-        if current_control and not current_control.cancel_event.is_set():
-            raise ParamException("任务已在执行中")
-
-        if task.status == TaskStatusEnum.RUNNING:
-            raise ParamException("任务已在执行中")
-
-        task_run = TaskRun(
-            task_id=task.id,
-            status=TaskRunStatusEnum.PENDING,
-        )
-        self.db.add(task_run)
-        self.db.commit()
-        self.db.refresh(task_run)
-
-        control = TaskRunControl(task_id=task.id, task_run_id=task_run.id)
-        control.task = asyncio.create_task(self.task_runner.run(control))
-        task_run_registry.register(control)
+        try:
+            dispatch_result = self.dispatcher.dispatch_start(task=task, task_run_id=task_run.id)
+            task_run.summary_json = {
+                **dict(task_run.summary_json or {}),
+                "worker_id": dispatch_result["worker_id"],
+                "worker_task_id": dispatch_result["worker_task_id"],
+                "worker_addr": dispatch_result["worker_addr"],
+            }
+            self.db.commit()
+        except Exception:
+            self._rollback_prepared_task_run(task_id=task_id, task_run_id=task_run.id)
+            raise
 
         return {
-            "task_id": task.id,
+            "task_id": task_id,
             "task_run_id": task_run.id,
             "status": task_run.status,
         }
@@ -50,23 +44,27 @@ class TaskRuntimeService:
         task = self._get_task(task_id)
         self.access_control.ensure_project_manage_access(task.project_id)
 
-        control = task_run_registry.stop(task_id)
-        if not control:
-            latest_run = self._get_latest_task_run(task_id)
-            if not latest_run or latest_run.status != TaskRunStatusEnum.RUNNING:
-                raise ParamException("当前没有正在执行的任务")
-            latest_run.status = TaskRunStatusEnum.CANCELED
-            task.status = TaskStatusEnum.CANCELED
-            self.db.commit()
-            return {
-                "task_id": task.id,
-                "task_run_id": latest_run.id,
-                "status": latest_run.status,
-            }
+        latest_run = self._get_latest_task_run(task_id)
+        if not latest_run or latest_run.status != TaskRunStatusEnum.RUNNING:
+            raise ParamException("Task is not running.")
+
+        worker_task_id = str((latest_run.summary_json or {}).get("worker_task_id") or "")
+        worker_addr = str((latest_run.summary_json or {}).get("worker_addr") or "")
+        if not worker_task_id:
+            raise ParamException("Worker task metadata is missing for the running task.")
+        if not worker_addr:
+            raise ParamException("Worker address is missing for the running task.")
+
+        self.dispatcher.dispatch_stop(
+            task_id=task.id,
+            task_run_id=latest_run.id,
+            worker_task_id=worker_task_id,
+            worker_addr=worker_addr,
+        )
 
         return {
             "task_id": task.id,
-            "task_run_id": control.task_run_id,
+            "task_run_id": latest_run.id,
             "status": TaskRunStatusEnum.CANCELED,
         }
 
@@ -94,26 +92,23 @@ class TaskRuntimeService:
             total_requests = int(summary.get("total_requests") or 0)
             success_count = int(summary.get("success_count") or 0)
             fail_count = int(summary.get("fail_count") or 0)
-            success_ratio = 0.0
-            if total_requests > 0:
-                success_ratio = round(success_count / total_requests, 4)
-            runs.append({
-                "id": task_run.id,
-                "status": task_run.status,
-                "started_at": task_run.started_at,
-                "finished_at": task_run.finished_at,
-                "runtime_seconds": task_run.runtime_seconds or 0,
-                "total_requests": total_requests,
-                "success_count": success_count,
-                "fail_count": fail_count,
-                "success_ratio": success_ratio,
-                "latest_error": task_run.error_message or summary.get("latest_error"),
-            })
+            success_ratio = round(success_count / total_requests, 4) if total_requests else 0.0
+            runs.append(
+                {
+                    "id": task_run.id,
+                    "status": task_run.status,
+                    "started_at": task_run.started_at,
+                    "finished_at": task_run.finished_at,
+                    "runtime_seconds": task_run.runtime_seconds or 0,
+                    "total_requests": total_requests,
+                    "success_count": success_count,
+                    "fail_count": fail_count,
+                    "success_ratio": success_ratio,
+                    "latest_error": task_run.error_message or summary.get("latest_error"),
+                }
+            )
 
-        return {
-            "task_id": task.id,
-            "runs": runs,
-        }
+        return {"task_id": task.id, "runs": runs}
 
     def report(self, task_id: int, task_run_id: int | None = None) -> dict[str, Any]:
         task = self._get_task(task_id)
@@ -173,6 +168,9 @@ class TaskRuntimeService:
             "p95": status_payload.get("p95", 0),
             "p99": status_payload.get("p99", 0),
             "latest_error": status_payload.get("latest_error"),
+            "status_code_counts": status_payload.get("status_code_counts", {}),
+            "error_type_counts": status_payload.get("error_type_counts", {}),
+            "failure_samples": status_payload.get("failure_samples", []),
             "hottest_endpoint": to_endpoint_payload(hottest_endpoint),
             "riskiest_endpoint": to_endpoint_payload(riskiest_endpoint),
             "stats": stats,
@@ -207,18 +205,10 @@ class TaskRuntimeService:
         if not summary:
             summary = dict(task.stats or {})
 
-        control = task_run_registry.get(task.id)
-        if control and control.last_snapshot:
-            if not task_run or control.task_run_id == task_run.id:
-                summary.update(control.last_snapshot)
-
         total_requests = int(summary.get("total_requests") or 0)
         success_count = int(summary.get("success_count") or 0)
         fail_count = int(summary.get("fail_count") or 0)
-        if total_requests > 0:
-            success_ratio = success_count / total_requests
-        else:
-            success_ratio = float(summary.get("success_ratio") or 0)
+        success_ratio = (success_count / total_requests) if total_requests else float(summary.get("success_ratio") or 0)
 
         current_rps = history[-1]["rps"] if history else 0
         avg_rt = history[-1]["avg_rt"] if history else float(summary.get("avg_rt") or 0)
@@ -226,13 +216,7 @@ class TaskRuntimeService:
         p99 = history[-1]["p99"] if history else float(summary.get("p99") or 0)
         active_users = history[-1]["active_users"] if history else int(summary.get("active_users") or 0)
 
-        latest_error = None
-        if task_run and task_run.error_message:
-            latest_error = task_run.error_message
-        elif control and control.latest_error:
-            latest_error = control.latest_error
-        else:
-            latest_error = summary.get("latest_error")
+        latest_error = task_run.error_message if task_run and task_run.error_message else summary.get("latest_error")
 
         return {
             "task_id": task.id,
@@ -253,6 +237,9 @@ class TaskRuntimeService:
             "p99": round(p99, 2),
             "host": task.host,
             "latest_error": latest_error,
+            "status_code_counts": summary.get("status_code_counts", {}),
+            "error_type_counts": summary.get("error_type_counts", {}),
+            "failure_samples": summary.get("failure_samples", []),
             "stats": summary.get("stats", []),
             "history": history,
         }
@@ -265,7 +252,7 @@ class TaskRuntimeService:
             )
         ).scalar_one_or_none()
         if not task:
-            raise ParamException("任务不存在")
+            raise ParamException("Task not found.")
         return task
 
     def _get_latest_task_run(self, task_id: int) -> TaskRun | None:
@@ -288,5 +275,71 @@ class TaskRuntimeService:
             )
         ).scalar_one_or_none()
         if not task_run:
-            raise ParamException("任务运行实例不存在")
+            raise ParamException("Task run not found.")
         return task_run
+
+    def _lock_task_for_runtime(self, task_id: int) -> Tasks | None:
+        try:
+            return self.db.execute(
+                Select(Tasks).where(
+                    Tasks.id == task_id,
+                    Tasks.is_deleted == false(),
+                ).with_for_update(nowait=True)
+            ).scalar_one_or_none()
+        except OperationalError as exc:
+            raise ParamException("Task is busy, please retry shortly.") from exc
+
+    def _prepare_task_run(self, task_id: int) -> TaskRun:
+        locked_task = self._lock_task_for_runtime(task_id)
+        if not locked_task:
+            raise ParamException("Task not found.")
+
+        if locked_task.status == TaskStatusEnum.RUNNING:
+            raise ParamException("Task is already running.")
+
+        latest_run = self.db.execute(
+            Select(TaskRun).where(
+                TaskRun.task_id == task_id,
+                TaskRun.is_deleted == false(),
+            ).order_by(TaskRun.created_at.desc()).limit(1)
+        ).scalars().first()
+        if latest_run and latest_run.status in {TaskRunStatusEnum.PENDING, TaskRunStatusEnum.RUNNING}:
+            raise ParamException("Task already has an active run.")
+
+        task_run = TaskRun(task_id=locked_task.id, status=TaskRunStatusEnum.PENDING, summary_json={})
+        locked_task.status = TaskStatusEnum.RUNNING
+        locked_task.finished_at = None
+        locked_task.runtime_seconds = 0
+        locked_task.runtime = "00:00:00"
+
+        self.db.add(task_run)
+        self.db.commit()
+        self.db.refresh(task_run)
+        return task_run
+
+    def _rollback_prepared_task_run(self, task_id: int, task_run_id: int) -> None:
+        self.db.rollback()
+        try:
+            locked_task = self._lock_task_for_runtime(task_id)
+        except ParamException:
+            locked_task = None
+
+        try:
+            task_run = self.db.execute(
+                Select(TaskRun).where(
+                    TaskRun.id == task_run_id,
+                    TaskRun.task_id == task_id,
+                    TaskRun.is_deleted == false(),
+                ).with_for_update(nowait=True)
+            ).scalar_one_or_none()
+        except OperationalError:
+            task_run = None
+
+        if locked_task and locked_task.status == TaskStatusEnum.RUNNING:
+            locked_task.status = TaskStatusEnum.PENDING
+
+        if task_run and task_run.status == TaskRunStatusEnum.PENDING:
+            task_run.status = TaskRunStatusEnum.FAILED
+            task_run.error_message = "Failed to dispatch task to worker."
+
+        self.db.commit()

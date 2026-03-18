@@ -18,6 +18,7 @@ from passlib.context import CryptContext
 from app.core.exception import ParamException
 from app.db import Base
 from app.models.base import BaseModel
+from app.utils.time_utils import utc_now
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -81,7 +82,7 @@ class Users(BaseModel):
 
     def update_last_login(self):
         """更新最后登录时间"""
-        self.last_login_at = datetime.now()
+        self.last_login_at = utc_now()
 
     def set_password(self, password: str):
 

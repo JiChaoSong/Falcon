@@ -125,6 +125,9 @@ export interface TaskRuntimeStatus {
   p99: number
   host: string | null
   latest_error: string | null
+  status_code_counts: Record<string, number>
+  error_type_counts: Record<string, number>
+  failure_samples: Array<Record<string, unknown>>
   stats: Array<Record<string, unknown>>
   history: TaskMetricPoint[]
 }
@@ -178,6 +181,9 @@ export interface TaskReportData {
   p95: number
   p99: number
   latest_error: string | null
+  status_code_counts: Record<string, number>
+  error_type_counts: Record<string, number>
+  failure_samples: Array<Record<string, unknown>>
   hottest_endpoint: TaskReportEndpoint | null
   riskiest_endpoint: TaskReportEndpoint | null
   stats: Array<Record<string, unknown>>

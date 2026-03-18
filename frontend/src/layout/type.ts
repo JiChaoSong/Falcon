@@ -3,6 +3,7 @@ export interface Stats {
     name:string;
     num_requests:number;
     num_failures:number;
+    success_ratio?: number;
     min_response_time:number;
     max_response_time:number;
     current_rps:number;
@@ -12,6 +13,9 @@ export interface Stats {
     total_rps:number;
     total_fail_per_sec:number;
     avg_content_length:number;
+    status_code_counts?: Record<string, number>;
+    error_type_counts?: Record<string, number>;
+    latest_error?: string | null;
     "response_time_percentile_0.95"?: number;
     "response_time_percentile_0.99"?: number;
 }
@@ -27,7 +31,7 @@ export type SystemState =
 
 export interface Metrics {
     stats: Stats[];
-    errors: object[];
+    errors: Array<Record<string, unknown>>;
     total_rps: number;
     total_fail_per_sec: number;
     fail_ratio: number;
@@ -37,6 +41,9 @@ export interface Metrics {
     start_time: string;
     runtime: string;
     runtime_seconds: number;
+    status_code_counts?: Record<string, number>;
+    error_type_counts?: Record<string, number>;
+    failure_samples?: Array<Record<string, unknown>>;
 }
 
 export interface MetricHistoryPoint {

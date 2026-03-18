@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { CanvasRenderer } from 'echarts/renderers';
-import { LineChart, type LineSeriesOption } from 'echarts/charts';
+import { BarChart, LineChart, type BarSeriesOption, type LineSeriesOption } from 'echarts/charts';
 import {
   GridComponent,
   LegendComponent,
@@ -20,6 +20,7 @@ import {
 use([
   CanvasRenderer,
   LineChart,
+  BarChart,
   GridComponent,
   LegendComponent,
   TooltipComponent,
@@ -40,17 +41,21 @@ const props = defineProps<{
   labels: string[];
   series: SeriesConfig[];
   legend?: string[];
+  mode?: 'line' | 'bar';
+  height?: number;
 }>();
 
 const chartRef = ref<HTMLDivElement | null>(null);
 type ECOption = ComposeOption<
   LineSeriesOption |
+  BarSeriesOption |
   GridComponentOption |
   LegendComponentOption |
   TooltipComponentOption
 >;
 
 let chartInstance: ECharts | null = null;
+const chartHeight = computed(() => `${props.height || 260}px`);
 
 const option = computed<ECOption>(() => {
   const hasSecondaryAxis = props.series.some((item) => item.yAxisIndex === 1);
@@ -121,8 +126,8 @@ const option = computed<ECOption>(() => {
     ],
     series: props.series.map((item) => ({
       name: item.name,
-      type: 'line',
-      smooth: true,
+      type: props.mode === 'bar' ? 'bar' : 'line',
+      smooth: props.mode === 'bar' ? false : true,
       symbol: 'none',
       showSymbol: false,
       yAxisIndex: item.yAxisIndex ?? 0,
@@ -135,6 +140,7 @@ const option = computed<ECOption>(() => {
       itemStyle: {
         color: item.color
       },
+      barMaxWidth: props.mode === 'bar' ? 28 : undefined,
       areaStyle: item.areaColor ? {
         color: item.areaColor
       } : undefined
@@ -245,7 +251,7 @@ onBeforeUnmount(() => {
 }
 
 .chart-canvas {
-  height: 260px;
+  height: v-bind(chartHeight);
   margin-top: 14px;
 }
 

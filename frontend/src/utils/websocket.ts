@@ -1,163 +1,139 @@
-// src/utils/websocket.ts
-import { message } from "ant-design-vue";
-
-// WebSocket 控制管理器
-class WebSocketManager {
-    private metricsSocket: WebSocket | null = null;
-    private controlSocket: WebSocket | null = null;
-    private metricsUrl: string;
-    private controlUrl: string;
-
-    // 回调函数
-    private onMetricsMessage: ((data: any) => void) | null = null;
-    private onControlMessage: ((data: any) => void) | null = null;
-    private onConnectionChange: ((connected: boolean) => void) | null = null;
-
-    constructor(
-        metricsUrl: string = 'ws://localhost:8000/ws/metrics',
-        controlUrl: string = 'ws://localhost:8000/control'
-    ) {
-        this.metricsUrl = metricsUrl;
-        this.controlUrl = controlUrl;
-    }
-
-    // 连接所有 WebSocket
-    connectAll() {
-        this.connectMetrics();
-        this.connectControl();
-    }
-
-    // 连接监控 WebSocket
-    connectMetrics() {
-        if (this.metricsSocket && this.metricsSocket.readyState === WebSocket.OPEN) {
-            return;
-        }
-
-        try {
-            this.metricsSocket = new WebSocket(this.metricsUrl);
-
-            this.metricsSocket.onopen = () => {
-                console.log('监控 WebSocket 连接已建立');
-                this.onConnectionChange?.(true);
-            };
-
-            this.metricsSocket.onmessage = (event: MessageEvent) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    this.onMetricsMessage?.(data);
-                } catch (err) {
-                    console.error("解析监控数据失败:", err);
-                }
-            };
-
-            this.metricsSocket.onerror = (error) => {
-                console.error('监控 WebSocket 错误:', error);
-                message.error("监控连接错误");
-            };
-
-            this.metricsSocket.onclose = () => {
-                console.log('监控 WebSocket 连接已关闭');
-                this.onConnectionChange?.(false);
-            };
-        } catch (error) {
-            console.error('创建监控 WebSocket 连接失败:', error);
-            message.error("创建监控连接失败");
-        }
-    }
-
-    // 连接控制 WebSocket
-    connectControl() {
-        if (this.controlSocket && this.controlSocket.readyState === WebSocket.OPEN) {
-            return;
-        }
-
-        try {
-            this.controlSocket = new WebSocket(this.controlUrl);
-
-            this.controlSocket.onopen = () => {
-                console.log('控制 WebSocket 连接已建立');
-                message.success("控制连接已建立");
-            };
-
-            this.controlSocket.onmessage = (event: MessageEvent) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    this.onControlMessage?.(data);
-                } catch (err) {
-                    console.error("解析控制响应失败:", err);
-                }
-            };
-
-            this.controlSocket.onerror = (error) => {
-                console.error('控制 WebSocket 错误:', error);
-                message.error("控制连接错误");
-            };
-
-            this.controlSocket.onclose = () => {
-                console.log('控制 WebSocket 连接已关闭');
-            };
-        } catch (error) {
-            console.error('创建控制 WebSocket 连接失败:', error);
-            message.error("创建控制连接失败");
-        }
-    }
-
-    // 发送控制命令
-    sendControlCommand(cmd: string, taskId: number, data: any = {}) {
-        if (!this.controlSocket || this.controlSocket.readyState !== WebSocket.OPEN) {
-            message.error("控制连接未就绪");
-            return false;
-        }
-
-        const messageObj = {
-            cmd: cmd,
-            task_id: taskId,
-            data: data
-        };
-
-        try {
-            this.controlSocket.send(JSON.stringify(messageObj));
-            console.log(`发送控制命令: ${cmd}`, messageObj);
-            return true;
-        } catch (error) {
-            console.error(`发送控制命令 ${cmd} 失败:`, error);
-            message.error("发送命令失败");
-            return false;
-        }
-    }
-
-    // 关闭所有连接
-    disconnectAll() {
-        if (this.metricsSocket) {
-            this.metricsSocket.close();
-        }
-        if (this.controlSocket) {
-            this.controlSocket.close();
-        }
-    }
-
-    // 设置回调函数
-    setOnMetricsMessage(callback: (data: any) => void) {
-        this.onMetricsMessage = callback;
-    }
-
-    setOnControlMessage(callback: (data: any) => void) {
-        this.onControlMessage = callback;
-    }
-
-    setOnConnectionChange(callback: (connected: boolean) => void) {
-        this.onConnectionChange = callback;
-    }
-
-    // 检查连接状态
-    isMetricsConnected(): boolean {
-        return this.metricsSocket?.readyState === WebSocket.OPEN;
-    }
-
-    isControlConnected(): boolean {
-        return this.controlSocket?.readyState === WebSocket.OPEN;
-    }
+export interface TaskRuntimeSocketMessage {
+  channel: string
+  event: string
+  task_id: number
+  timestamp: string | null
+  data: Record<string, unknown>
 }
 
-// 创建单例实例
-export const wsManager = new WebSocketManager();
+const resolveApiBaseUrl = () => {
+  const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL
+  if (configuredBaseUrl) {
+    return configuredBaseUrl.replace(/\/api\/?$/, '').replace(/\/$/, '')
+  }
+
+  return window.location.origin.replace(/\/$/, '')
+}
+
+const toWebSocketBaseUrl = (baseUrl: string) => {
+  if (baseUrl.startsWith('https://')) {
+    return baseUrl.replace('https://', 'wss://')
+  }
+  if (baseUrl.startsWith('http://')) {
+    return baseUrl.replace('http://', 'ws://')
+  }
+  return `${window.location.protocol === 'https:' ? 'wss://' : 'ws://'}${window.location.host}`
+}
+
+class TaskRuntimeSocketManager {
+  private socket: WebSocket | null = null
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private manualClose = false
+  private currentTaskId: number | null = null
+  private token = ''
+  private readonly wsBaseUrl = toWebSocketBaseUrl(resolveApiBaseUrl())
+
+  private onMessageCallback: ((message: TaskRuntimeSocketMessage) => void) | null = null
+  private onConnectionChangeCallback: ((connected: boolean) => void) | null = null
+  private onErrorCallback: ((event: Event) => void) | null = null
+
+  connect(taskId: number, token: string) {
+    if (!taskId || !token) {
+      return
+    }
+
+    const targetUrl = `${this.wsBaseUrl}/ws/task/${taskId}?token=${encodeURIComponent(token)}`
+    if (this.socket && this.socket.readyState === WebSocket.OPEN && this.currentTaskId === taskId) {
+      return
+    }
+
+    this.manualClose = false
+    this.currentTaskId = taskId
+    this.token = token
+    this.clearReconnectTimer()
+    this.closeSocket()
+
+    this.socket = new WebSocket(targetUrl)
+    this.socket.onopen = () => {
+      this.startHeartbeat()
+      this.onConnectionChangeCallback?.(true)
+    }
+    this.socket.onmessage = (event: MessageEvent<string>) => {
+      try {
+        this.onMessageCallback?.(JSON.parse(event.data) as TaskRuntimeSocketMessage)
+      } catch (error) {
+        console.error('Failed to parse task runtime websocket message:', error)
+      }
+    }
+    this.socket.onerror = (error) => {
+      console.error('Task runtime websocket error:', error)
+      this.onErrorCallback?.(error)
+    }
+    this.socket.onclose = () => {
+      this.stopHeartbeat()
+      this.onConnectionChangeCallback?.(false)
+      this.socket = null
+
+      if (!this.manualClose && this.currentTaskId && this.token) {
+        this.reconnectTimer = setTimeout(() => {
+          this.connect(this.currentTaskId as number, this.token)
+        }, 3000)
+      }
+    }
+  }
+
+  disconnect() {
+    this.manualClose = true
+    this.currentTaskId = null
+    this.token = ''
+    this.clearReconnectTimer()
+    this.closeSocket()
+    this.onConnectionChangeCallback?.(false)
+  }
+
+  setOnMessage(callback: (message: TaskRuntimeSocketMessage) => void) {
+    this.onMessageCallback = callback
+  }
+
+  setOnConnectionChange(callback: (connected: boolean) => void) {
+    this.onConnectionChangeCallback = callback
+  }
+
+  setOnError(callback: (event: Event) => void) {
+    this.onErrorCallback = callback
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat()
+    this.heartbeatTimer = setInterval(() => {
+      if (this.socket?.readyState === WebSocket.OPEN) {
+        this.socket.send('ping')
+      }
+    }, 20000)
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
+    }
+  }
+
+  private clearReconnectTimer() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+  }
+
+  private closeSocket() {
+    this.stopHeartbeat()
+    if (this.socket) {
+      this.socket.close()
+      this.socket = null
+    }
+  }
+}
+
+export const taskRuntimeSocket = new TaskRuntimeSocketManager()

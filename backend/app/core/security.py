@@ -7,6 +7,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.utils.time_utils import utc_from_timestamp, utc_now
 
 import logging
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ def verify_access_token(token: str) -> Optional[TokenPayload]:
 
         # 验证过期时间
         exp = payload.get("exp")
-        if exp and datetime.now() > datetime.fromtimestamp(exp):
+        if exp and utc_now() > utc_from_timestamp(exp):
             return None
 
         return TokenPayload(**payload)
@@ -59,14 +60,14 @@ def create_access_token(data:Dict[str,Any], expires_delta:Optional[timedelta] = 
     to_encode = data.copy()
 
     if expires_delta:
-        expire = datetime.now() + expires_delta
+        expire = utc_now() + expires_delta
     else:
-        expire = datetime.now() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        expire = utc_now() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
     to_encode.update(
         {
             "exp": expire,
-            "iat": datetime.now(),
+            "iat": utc_now(),
             "jti": secrets.token_urlsafe(32),  # 令牌唯一标识
             "type": "access"
         })
@@ -97,15 +98,15 @@ def refresh_access_token(
 
     # 刷新令牌过期时间更长
     if expires_delta:
-        expire = datetime.now() + expires_delta
+        expire = utc_now() + expires_delta
     else:
-        expire = datetime.now() + timedelta(
+        expire = utc_now() + timedelta(
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
         )
 
     to_encode.update({
         "exp": expire,
-        "iat": datetime.now(),
+        "iat": utc_now(),
         "jti": secrets.token_urlsafe(32),  # 令牌唯一标识
         "type": "refresh"
     })

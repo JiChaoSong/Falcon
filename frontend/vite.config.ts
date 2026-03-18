@@ -108,14 +108,18 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '0.0.0.0',
-      port: 3000,
-      open: true,
+      open: false,
       cors: true,
       proxy: {
         '/api': {
-          target: env.VITE_API_BASE_URL || 'http://localhost:8008',
+          target: 'http://localhost:8008',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, ''),
+        },
+        '/ws': {
+          target: 'ws://localhost:8008',
+          changeOrigin: true,
+          ws: true,
         },
       },
     },

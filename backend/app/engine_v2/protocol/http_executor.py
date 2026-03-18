@@ -1,13 +1,27 @@
 import json
 import time
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
-from urllib.request import Request, urlopen
+
+import httpx
 
 
 class HTTPExecutor:
-    def execute(
+    def __init__(self) -> None:
+        self.client = httpx.AsyncClient(
+            timeout=10.0,
+            follow_redirects=False,
+            limits=httpx.Limits(
+                max_connections=1000,
+                max_keepalive_connections=200,
+                keepalive_expiry=30.0,
+            ),
+        )
+
+    async def close(self) -> None:
+        await self.client.aclose()
+
+    async def execute(
         self,
         host: str,
         method: str,
@@ -22,33 +36,22 @@ class HTTPExecutor:
 
         started_at = time.perf_counter()
         try:
-            request = Request(
-                request_url,
-                data=request_body,
-                headers=request_headers,
+            response = await self.client.request(
                 method=method.upper(),
+                url=request_url,
+                headers=request_headers,
+                content=request_body,
+                timeout=float(timeout),
             )
-            with urlopen(request, timeout=timeout) as response:
-                response_text = response.read().decode("utf-8", errors="ignore")
-                elapsed_ms = (time.perf_counter() - started_at) * 1000
-                return {
-                    "success": 200 <= response.status < 400,
-                    "status_code": response.status,
-                    "response_time_ms": elapsed_ms,
-                    "body": response_text,
-                    "error": None,
-                }
-        except HTTPError as exc:
             elapsed_ms = (time.perf_counter() - started_at) * 1000
-            body_text = exc.read().decode("utf-8", errors="ignore") if exc.fp else ""
             return {
-                "success": False,
-                "status_code": exc.code,
+                "success": 200 <= response.status_code < 400,
+                "status_code": response.status_code,
                 "response_time_ms": elapsed_ms,
-                "body": body_text,
-                "error": str(exc),
+                "body": response.text,
+                "error": None if 200 <= response.status_code < 400 else f"HTTP {response.status_code}",
             }
-        except URLError as exc:
+        except httpx.HTTPError as exc:
             elapsed_ms = (time.perf_counter() - started_at) * 1000
             return {
                 "success": False,
