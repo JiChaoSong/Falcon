@@ -2,6 +2,7 @@
 import type { PropType } from "vue";
 
 import EChartPanel from "@/components/EChartPanel.vue";
+import { formatDateTime, formatNumber, formatNumberWithCommas, formatPercent } from "@/utils/tools";
 import type { MonitorChartConfig } from "@/layout/composables/useTaskMonitorViewModel";
 import type { Stats } from "@/layout/type.ts";
 
@@ -89,25 +90,37 @@ defineProps({
         <div class="report-list">
           <div class="report-item">
             <span class="report-label">总请求数</span>
-            <span class="report-value">{{ reportSummary.totalRequests }}</span>
+            <span class="report-value">{{ formatNumberWithCommas(reportSummary.totalRequests) }}</span>
           </div>
           <div class="report-item">
             <span class="report-label">总失败数</span>
-            <span class="report-value danger">{{ reportSummary.totalFailures }}</span>
+            <span class="report-value danger">{{ formatNumberWithCommas(reportSummary.totalFailures) }}</span>
           </div>
           <div class="report-item">
             <span class="report-label">当前吞吐</span>
-            <span class="report-value">{{ reportSummary.currentRps }}</span>
+            <span class="report-value">{{ formatNumber(reportSummary.currentRps) }} RPS</span>
           </div>
           <div class="report-item">
-            <span class="report-label">运行时长</span>
-            <span class="report-value">{{ reportSummary.runtime || "--" }}</span>
+            <span class="report-label">失败率</span>
+            <span class="report-value danger">{{ formatPercent(reportSummary.failRatio) }}</span>
           </div>
           <div class="report-item">
             <span class="report-label">运行实例</span>
             <span class="report-value">{{ reportSummary.runId ? `#${reportSummary.runId}` : "-" }}</span>
           </div>
           <div class="report-item">
+            <span class="report-label">开始时间</span>
+            <span class="report-value">{{ formatDateTime(reportSummary.startedAt) }}</span>
+          </div>
+          <div class="report-item">
+            <span class="report-label">结束时间</span>
+            <span class="report-value">{{ formatDateTime(reportSummary.finishedAt) }}</span>
+          </div>
+          <div class="report-item">
+            <span class="report-label">运行时长</span>
+            <span class="report-value">{{ reportSummary.runtime || "--" }}</span>
+          </div>
+          <div class="report-item report-item-wide">
             <span class="report-label">最近错误</span>
             <span class="report-value danger">{{ reportSummary.latestError || "-" }}</span>
           </div>
@@ -122,15 +135,15 @@ defineProps({
             <span class="report-value">{{ endpointSummary.slowestEndpoint }}</span>
           </div>
           <div class="report-item">
-            <span class="report-label">最高风险接口</span>
+            <span class="report-label">最危险接口</span>
             <span class="report-value danger">{{ endpointSummary.riskiestEndpoint }}</span>
           </div>
           <div class="report-item">
-            <span class="report-label">最高吞吐接口</span>
+            <span class="report-label">最繁忙接口</span>
             <span class="report-value">{{ endpointSummary.busiestEndpoint }}</span>
           </div>
           <div class="report-item">
-            <span class="report-label">运行状态</span>
+            <span class="report-label">任务状态</span>
             <span class="report-value">{{ endpointSummary.taskState }}</span>
           </div>
           <div class="report-item">
@@ -149,12 +162,12 @@ defineProps({
               <span class="error-name">{{ item.name }}</span>
             </div>
             <div class="error-meta">
-              <span>{{ item.num_failures }} 次失败</span>
-              <span>{{ item.current_fail_per_sec }}/s</span>
+              <span>{{ formatNumberWithCommas(item.num_failures) }} 次失败</span>
+              <span>{{ formatNumber(item.current_fail_per_sec) }}/s</span>
             </div>
           </div>
         </div>
-        <div v-else class="empty-text">当前没有明显的高频失败接口。</div>
+        <div v-else class="empty-text">当前没有发现失败接口，说明这轮运行的错误量很低或暂时还没有形成错误样本。</div>
       </div>
     </section>
 
@@ -162,7 +175,7 @@ defineProps({
       <div class="table-head">
         <div>
           <div class="section-title">接口请求统计</div>
-          <div class="section-subtitle">按接口维度展示请求量、失败数、响应时间和实时吞吐，方便继续定位问题。</div>
+          <div class="section-subtitle">按接口维度查看请求量、失败量和响应时间，方便定位问题集中区域。</div>
         </div>
       </div>
 
@@ -186,14 +199,15 @@ defineProps({
 
 .report-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.2fr;
+  grid-template-columns: 1fr 1fr 1.15fr;
   gap: 16px;
 }
 
 .report-card,
 .table-panel {
   padding: 18px;
-  background: rgba(255, 255, 255, 0.95);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.97) 0%, rgba(248, 250, 252, 0.95) 100%);
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 22px;
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
@@ -202,6 +216,7 @@ defineProps({
 .section-title {
   font-size: 16px;
   font-weight: 800;
+  letter-spacing: 0.01em;
   color: #0f172a;
 }
 
@@ -233,11 +248,19 @@ defineProps({
   padding: 12px 14px;
   background: #f8fafc;
   border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.report-item-wide {
+  align-items: flex-start;
 }
 
 .report-value {
+  max-width: 58%;
+  text-align: right;
   font-weight: 700;
   color: #0f172a;
+  word-break: break-word;
 }
 
 .report-value.danger,
@@ -257,6 +280,7 @@ defineProps({
   padding: 2px 8px;
   border-radius: 999px;
   background: #dbeafe;
+  border: 1px solid rgba(59, 130, 246, 0.12);
   color: #1d4ed8;
   font-size: 12px;
   font-weight: 700;
@@ -279,18 +303,8 @@ defineProps({
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
-}
-
-@media (max-width: 1200px) {
-  .report-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 768px) {
-  .chart-grid {
-    grid-template-columns: 1fr;
-  }
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
 }
 </style>

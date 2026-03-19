@@ -2,8 +2,8 @@
   <div class="endpoint-card">
     <div class="endpoint-head">
       <div class="endpoint-eyebrow">热点接口</div>
-      <div class="endpoint-title">热点接口</div>
-      <div class="endpoint-subtitle">按失败压力和延迟权重排序，优先显示最值得排查的路径。</div>
+      <div class="endpoint-title">风险接口排序</div>
+      <div class="endpoint-subtitle">按失败速率和响应时间综合排序，帮助快速锁定最值得优先排查的接口。</div>
     </div>
 
     <div v-if="endpoints.length" class="endpoint-list">
@@ -26,7 +26,7 @@
     </div>
 
     <div v-else class="endpoint-empty">
-      压测开始并产生接口级明细后，这里会展示当前最热的高风险接口。
+      当前还没有形成足够的接口级统计数据。任务进入稳定施压后，这里会展示最热、最慢和最危险的接口。
     </div>
   </div>
 </template>
@@ -45,7 +45,9 @@ defineProps<{
   padding: 24px;
   border-radius: 22px;
   border: 1px solid rgba(148, 163, 184, 0.14);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.94) 100%);
+  background:
+    radial-gradient(circle at top right, rgba(254, 215, 170, 0.3), transparent 26%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.94) 100%);
   box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
 }
 
@@ -90,6 +92,7 @@ defineProps<{
   border-radius: 18px;
   border: 1px solid rgba(226, 232, 240, 0.9);
   background: rgba(248, 250, 252, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .endpoint-rank {
@@ -166,17 +169,8 @@ defineProps<{
   padding: 18px;
   border-radius: 16px;
   background: rgba(248, 250, 252, 0.82);
+  border: 1px dashed rgba(148, 163, 184, 0.24);
   font-size: 13px;
   line-height: 1.6;
-}
-
-@media (max-width: 768px) {
-  .endpoint-row {
-    grid-template-columns: 1fr;
-  }
-
-  .endpoint-risk {
-    align-items: flex-start;
-  }
 }
 </style>

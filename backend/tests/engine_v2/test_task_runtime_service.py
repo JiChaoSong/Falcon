@@ -94,6 +94,61 @@ def test_task_runtime_report_includes_runtime_distributions(monkeypatch):
     assert report["riskiest_endpoint"]["name"] == "checkout / submit"
 
 
+def test_task_runtime_report_includes_worker_snapshot(monkeypatch):
+    service = TaskRuntimeService(_FakeSession())
+    service.access_control.ensure_project_view_access = lambda _project_id: None
+
+    task = SimpleNamespace(
+        id=102,
+        name="worker metrics task",
+        project="demo",
+        owner="tester",
+        host="http://example.com",
+        execution_strategy="sequential",
+        project_id=1,
+    )
+    task_run = SimpleNamespace(id=9002)
+    runtime_status = {
+        "task_run_id": 9002,
+        "status": "running",
+        "started_at": "2026-03-19T10:00:00Z",
+        "finished_at": None,
+        "runtime_seconds": 30,
+        "total_requests": 10,
+        "success_count": 10,
+        "fail_count": 0,
+        "success_ratio": 1.0,
+        "avg_rt": 100.0,
+        "p95": 120.0,
+        "p99": 150.0,
+        "latest_error": None,
+        "status_code_counts": {},
+        "error_type_counts": {},
+        "failure_samples": [],
+        "stats": [],
+        "history": [],
+        "worker_snapshot": {
+            "worker_id": "worker-01",
+            "worker_addr": "127.0.0.1:50061",
+            "worker_status": "online",
+            "sampled_at": "2026-03-19T10:00:30Z",
+            "system": {"hostname": "worker-host", "platform": "linux", "ip": "10.0.0.8"},
+            "resources": {"cpu_percent": 40.2, "memory_percent": 68.1},
+            "process": {"cpu_percent": 18.4, "memory_mb": 256.0, "threads": 12},
+        },
+    }
+
+    monkeypatch.setattr(service, "_get_task", lambda _task_id: task)
+    monkeypatch.setattr(service, "_get_task_run", lambda **_kwargs: task_run)
+    monkeypatch.setattr(service, "_build_runtime_status", lambda **_kwargs: runtime_status)
+
+    report = service.report(task_id=task.id, task_run_id=task_run.id)
+
+    assert report["worker_snapshot"]["worker_id"] == "worker-01"
+    assert report["worker_snapshot"]["resources"]["cpu_percent"] == 40.2
+    assert report["worker_snapshot"]["process"]["memory_mb"] == 256.0
+
+
 class _FakeStopSession:
     def __init__(self):
         self.commit_count = 0

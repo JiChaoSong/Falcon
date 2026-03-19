@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import String, Text
 
 from app.core.exception import ParamException
-from app.models import Tasks, TaskScenario, Scenario, TaskExecutionStrategyEnum
+from app.models import Tasks, TaskScenario, Scenario, ScenarioCase, Case, TaskExecutionStrategyEnum
 from app.schemas import task as schemas
 from app.services.access_control_service import AccessControlService
 from app.services.base_service import BaseService, ModelType
@@ -153,6 +153,44 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
                 )
             )
 
+    def _load_scenario_cases(self, scenario_id: int) -> list[dict[str, Any]]:
+        scenario_cases = self.db.execute(
+            Select(ScenarioCase).where(
+                ScenarioCase.scenario_id == scenario_id,
+                ScenarioCase.is_deleted == false(),
+            ).order_by(ScenarioCase.order.asc(), ScenarioCase.id.asc())
+        ).scalars().all()
+
+        case_ids = [item.case_id for item in scenario_cases]
+        if not case_ids:
+            return []
+
+        cases = self.db.execute(
+            Select(Case).where(
+                Case.id.in_(case_ids),
+                Case.is_deleted == false(),
+            )
+        ).scalars().all()
+        case_map = {item.id: item for item in cases}
+
+        results: list[dict[str, Any]] = []
+        for scenario_case in scenario_cases:
+            case = case_map.get(scenario_case.case_id)
+            if not case:
+                continue
+            results.append(
+                {
+                    "id": case.id,
+                    "name": case.name,
+                    "method": case.method,
+                    "url": case.url,
+                    "status": getattr(case.status, "value", str(case.status)),
+                    "order": scenario_case.order,
+                    "weight": scenario_case.weight,
+                }
+            )
+        return results
+
     def _load_task_scenarios(self, task_id: int) -> list[dict[str, Any]]:
         task_scenarios = self.db.execute(
             Select(TaskScenario).where(
@@ -168,6 +206,7 @@ class TaskService(BaseService[Tasks, schemas.TaskCreate, schemas.TaskUpdate]):
                 "order": item.order,
                 "weight": item.weight,
                 "target_users": item.target_users,
+                "cases": self._load_scenario_cases(item.scenario_id),
             }
             for item in task_scenarios
         ]

@@ -3,10 +3,11 @@ import threading
 import time
 from typing import Any
 
+import grpc
 from app.core.config import worker_settings
 from app.core.logging_config import get_logger
 from app.grpc.generated import worker_runtime_pb2, worker_runtime_pb2_grpc
-import grpc
+from app.worker.worker_resource_snapshot import worker_resource_snapshot_collector
 
 logger = get_logger(__name__)
 
@@ -44,7 +45,7 @@ class WorkerControlPlaneClient:
                     "running_tasks": int(get_running_tasks()),
                     "capacity": worker_settings.GRPC_WORKER_CAPACITY,
                     "tags": self._parse_tags(),
-                    "metadata_json": self._parse_metadata(),
+                    "metadata_json": self._build_metadata_payload(),
                     "version": worker_settings.VERSION,
                 }
                 self._heartbeat_via_grpc(payload)
@@ -65,7 +66,7 @@ class WorkerControlPlaneClient:
                     capacity=worker_settings.GRPC_WORKER_CAPACITY,
                     scheduling_weight=100,
                     tags=self._parse_tags(),
-                    metadata_json=json.dumps(self._parse_metadata(), ensure_ascii=True),
+                    metadata_json=json.dumps(self._build_metadata_payload(), ensure_ascii=True),
                 ),
                 timeout=5,
             )
@@ -108,6 +109,26 @@ class WorkerControlPlaneClient:
         except json.JSONDecodeError:
             return {}
         return parsed if isinstance(parsed, dict) else {}
+
+    def _build_metadata_payload(self) -> dict[str, Any]:
+        static_metadata = self._parse_metadata()
+        snapshot = worker_resource_snapshot_collector.collect()
+        return {
+            **static_metadata,
+            "system": {
+                **dict(static_metadata.get("system") or {}),
+                **dict(snapshot.get("system") or {}),
+            },
+            "resources": {
+                **dict(static_metadata.get("resources") or {}),
+                **dict(snapshot.get("resources") or {}),
+            },
+            "process": {
+                **dict(static_metadata.get("process") or {}),
+                **dict(snapshot.get("process") or {}),
+            },
+            "sampled_at": snapshot.get("sampled_at"),
+        }
 
 
 worker_control_plane_client = WorkerControlPlaneClient()

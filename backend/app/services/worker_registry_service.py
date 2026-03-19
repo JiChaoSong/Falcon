@@ -51,7 +51,7 @@ class WorkerRegistryService:
             worker.capacity = max(int(capacity or 1), 1)
             worker.scheduling_weight = max(int(scheduling_weight or 100), 1)
             worker.tags = normalized_tags
-            worker.metadata_json = metadata_json or {}
+            worker.metadata_json = self._normalize_metadata(metadata_json)
             worker.status = self._derive_status(worker.status, worker.running_tasks, worker.capacity, None)
             worker.last_heartbeat_at = now
             worker.last_seen_error = None
@@ -67,7 +67,7 @@ class WorkerRegistryService:
                 running_tasks=0,
                 scheduling_weight=max(int(scheduling_weight or 100), 1),
                 tags=normalized_tags,
-                metadata_json=metadata_json or {},
+                metadata_json=self._normalize_metadata(metadata_json),
                 registered_at=now,
                 last_heartbeat_at=now,
                 last_seen_error=None,
@@ -98,7 +98,7 @@ class WorkerRegistryService:
         if tags is not None:
             worker.tags = self._normalize_tags(tags)
         if metadata_json is not None:
-            worker.metadata_json = metadata_json
+            worker.metadata_json = self._normalize_metadata(metadata_json)
         if version:
             worker.version = version
         worker.last_seen_error = (last_seen_error or "")[:500] or None
@@ -155,7 +155,7 @@ class WorkerRegistryService:
         if tags is not None:
             worker.tags = self._normalize_tags(tags)
         if metadata_json is not None:
-            worker.metadata_json = metadata_json
+            worker.metadata_json = self._normalize_metadata(metadata_json)
         self.db.commit()
         self.db.refresh(worker)
         return self._to_payload(worker)
@@ -287,6 +287,16 @@ class WorkerRegistryService:
 
     def _normalize_tags(self, tags: list[str] | None) -> list[str]:
         return [str(item).strip() for item in (tags or []) if str(item).strip()]
+
+    def _normalize_metadata(self, metadata_json: dict[str, Any] | None) -> dict[str, Any]:
+        metadata = dict(metadata_json or {})
+        return {
+            **metadata,
+            "system": dict(metadata.get("system") or {}),
+            "resources": dict(metadata.get("resources") or {}),
+            "process": dict(metadata.get("process") or {}),
+            "sampled_at": metadata.get("sampled_at"),
+        }
 
     def _derive_status(
         self,

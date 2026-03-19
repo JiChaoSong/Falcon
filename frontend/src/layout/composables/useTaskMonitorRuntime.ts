@@ -1,7 +1,7 @@
 import { computed, ref, type Ref } from "vue";
 
 import { TaskApi } from "@/api/task";
-import type { TaskInfo, TaskReportData, TaskRunHistoryItem, TaskRuntimeStatus } from "@/types/task";
+import type { TaskInfo, TaskReportData, TaskRunHistoryItem, TaskRuntimeStatus, WorkerSnapshot } from "@/types/task";
 import type { MetricHistoryPoint, Metrics, Stats, SystemState } from "@/layout/type.ts";
 
 const defaultMetric: Metrics = {
@@ -114,6 +114,7 @@ export const useTaskMonitorRuntime = (taskId: Ref<number>) => {
   const taskRunning = ref(false);
   const taskInfo = ref<TaskInfo>(createDefaultTaskInfo(taskId.value));
   const taskReport = ref<TaskReportData | null>(null);
+  const workerSnapshot = ref<WorkerSnapshot | null>(null);
   const taskRuns = ref<TaskRunHistoryItem[]>([]);
   const selectedTaskRunId = ref<number | null>(null);
   const dataSource = ref<Stats[]>([]);
@@ -149,6 +150,7 @@ export const useTaskMonitorRuntime = (taskId: Ref<number>) => {
       error_type_counts: runtime.error_type_counts || {},
       failure_samples: runtime.failure_samples || [],
     };
+    workerSnapshot.value = runtime.worker_snapshot || null;
     metricHistory.value = runtime.history.map((item) => ({
       time: buildRuntime(
         Math.max(
@@ -229,6 +231,7 @@ export const useTaskMonitorRuntime = (taskId: Ref<number>) => {
   const resetMonitorState = () => {
     taskInfo.value = createDefaultTaskInfo(taskId.value);
     taskReport.value = null;
+    workerSnapshot.value = null;
     taskRuns.value = [];
     selectedTaskRunId.value = null;
     dataSource.value = [];
@@ -248,6 +251,7 @@ export const useTaskMonitorRuntime = (taskId: Ref<number>) => {
     taskRunning,
     taskInfo,
     taskReport,
+    workerSnapshot,
     taskRuns,
     selectedTaskRunId,
     selectedTaskRun,

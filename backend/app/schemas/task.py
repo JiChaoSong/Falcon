@@ -22,6 +22,20 @@ class TaskScenarioInfo(TaskScenarioBind):
     scenario: str
 
 
+class TaskCaseInfo(BaseModel):
+    id: int
+    name: str
+    method: str | None = None
+    url: str
+    status: str
+    order: int = 0
+    weight: int = 0
+
+
+class TaskScenarioDetail(TaskScenarioInfo):
+    cases: List[TaskCaseInfo] = []
+
+
 class TaskCreate(BaseModel):
     name: str
     description: str | None = None
@@ -140,7 +154,7 @@ class TaskInfo(BaseSchema):
     runtime:str | None = None
     finished_at: datetime | None = None
     stats: Any | None = None
-    scenarios: List[TaskScenarioInfo] = []
+    scenarios: List[TaskScenarioDetail] = []
 
 class TaskList(BaseListSchema):
     results: List[TaskInfo]# 数据列表
@@ -188,6 +202,7 @@ class TaskRuntimeStatusData(BaseModel):
     failure_samples: List[Any] = []
     stats: List[Any] = []
     history: List[TaskMetricPoint] = []
+    worker_snapshot: dict[str, Any] = {}
 
 
 class TaskRuntimeStatusResponse(BaseResponse):
@@ -254,6 +269,7 @@ class TaskReportData(BaseModel):
     riskiest_endpoint: TaskReportEndpoint | None = None
     stats: List[Any] = []
     history: List[TaskMetricPoint] = []
+    worker_snapshot: dict[str, Any] = {}
 
 
 class TaskReportResponse(BaseResponse):

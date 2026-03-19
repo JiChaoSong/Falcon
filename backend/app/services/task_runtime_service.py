@@ -5,7 +5,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.exception import ParamException
-from app.models import TaskMetricSecond, TaskRun, TaskRunStatusEnum, Tasks, TaskScenario, TaskStatusEnum
+from app.models import TaskMetricSecond, TaskRun, TaskRunStatusEnum, Tasks, TaskScenario, TaskStatusEnum, Worker
 from app.services.access_control_service import AccessControlService
 from app.services.grpc_worker_dispatcher_service import GrpcWorkerDispatcherService
 
@@ -183,6 +183,7 @@ class TaskRuntimeService:
             "riskiest_endpoint": to_endpoint_payload(riskiest_endpoint),
             "stats": stats,
             "history": status_payload.get("history", []),
+            "worker_snapshot": status_payload.get("worker_snapshot"),
         }
 
     def _build_runtime_status(self, task: Tasks, task_run: TaskRun | None) -> dict[str, Any]:
@@ -250,6 +251,58 @@ class TaskRuntimeService:
             "failure_samples": summary.get("failure_samples", []),
             "stats": summary.get("stats", []),
             "history": history,
+            "worker_snapshot": self._build_worker_snapshot(task_run),
+        }
+
+    def _build_worker_snapshot(self, task_run: TaskRun | None) -> dict[str, Any] | None:
+        if not task_run:
+            return None
+
+        summary = dict(task_run.summary_json or {})
+        worker_id = str(summary.get("worker_id") or "").strip()
+        worker_addr = str(summary.get("worker_addr") or "").strip() or None
+        if not worker_id:
+            return None
+
+        worker = self.db.execute(
+            Select(Worker).where(
+                Worker.worker_id == worker_id,
+                Worker.is_deleted == false(),
+            )
+        ).scalar_one_or_none()
+
+        metadata = dict((worker.metadata_json if worker else None) or {})
+        system = dict(metadata.get("system") or {})
+        resources = dict(metadata.get("resources") or {})
+        process = dict(metadata.get("process") or {})
+
+        return {
+            "worker_id": worker_id,
+            "worker_addr": worker_addr or (worker.address if worker else None),
+            "worker_status": worker.status if worker else None,
+            "sampled_at": metadata.get("sampled_at"),
+            "system": {
+                "hostname": system.get("hostname"),
+                "platform": system.get("platform"),
+                "ip": system.get("ip"),
+            },
+            "resources": {
+                "cpu_percent": resources.get("cpu_percent"),
+                "load_1": resources.get("load_1"),
+                "memory_percent": resources.get("memory_percent"),
+                "memory_used_mb": resources.get("memory_used_mb"),
+                "memory_total_mb": resources.get("memory_total_mb"),
+                "disk_percent": resources.get("disk_percent"),
+                "disk_used_gb": resources.get("disk_used_gb"),
+                "disk_total_gb": resources.get("disk_total_gb"),
+                "net_sent_kbps": resources.get("net_sent_kbps"),
+                "net_recv_kbps": resources.get("net_recv_kbps"),
+            },
+            "process": {
+                "cpu_percent": process.get("cpu_percent"),
+                "memory_mb": process.get("memory_mb"),
+                "threads": process.get("threads"),
+            },
         }
 
     def _get_task(self, task_id: int) -> Tasks:
