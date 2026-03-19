@@ -12,11 +12,12 @@
 from __future__ import annotations
 
 import logging
+import os
 import traceback
-from logging.handlers import TimedRotatingFileHandler, RotatingFileHandler
+from logging.handlers import TimedRotatingFileHandler, RotatingFileHandler, BaseRotatingHandler
 from pathlib import Path
 import sys
-from datetime import datetime
+from datetime import datetime, date
 import json
 from typing import Any, Dict, Optional, Tuple
 import threading
@@ -44,6 +45,70 @@ except ImportError:
 
     def get_current_user() -> Tuple[Optional[str], Optional[str]]:
         return (None, None)
+
+
+class TimeSizeRotationFileHandler(BaseRotatingHandler):
+    """
+    双重轮转日志处理器
+    1. 按天：每天午夜0点自动切割
+    2. 按大小：文件超过maxBytes自动切割
+    """
+    def __init__(
+        self,
+        filename: str,
+        maxBytes: int = 0,
+        backupCount: int = 0,
+        encoding: str = None,
+        delay: bool = False
+    ):
+        super().__init__(filename, 'a', encoding, delay)
+        self.maxBytes = maxBytes
+        self.backupCount = backupCount
+        self.current_date = date.today()
+        self.baseFilename = filename
+
+    def shouldRollover(self, record):
+        # 条件1：日期变了 → 必须轮转
+        if date.today() != self.current_date:
+            return 1
+        # 条件2：文件超过大小 → 轮转
+        if self.maxBytes > 0:
+            if self.stream is None:
+                self.stream = self._open()
+            self.stream.seek(0, 2)
+            if self.stream.tell() >= self.maxBytes:
+                return 1
+        return 0
+
+    def doRollover(self):
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+
+        today = date.today()
+        # 1. 日期变更：重命名为 文件名.日期.log
+        if today != self.current_date:
+            old_date = self.current_date.strftime("%Y-%m-%d")
+            dated_filename = f"{self.baseFilename}.{old_date}"
+            if os.path.exists(self.baseFilename):
+                if os.path.exists(dated_filename):
+                    os.remove(dated_filename)
+                os.rename(self.baseFilename, dated_filename)
+            self.current_date = today
+
+        # 2. 大小轮转：已按天分好的文件再按大小切 .1 .2 ...
+        else:
+            for i in range(self.backupCount - 1, 0, -1):
+                src = f"{self.baseFilename}.{i}"
+                dst = f"{self.baseFilename}.{i+1}"
+                if os.path.exists(src):
+                    if os.path.exists(dst):
+                        os.remove(dst)
+                    os.rename(src, dst)
+            if os.path.exists(self.baseFilename):
+                os.rename(self.baseFilename, f"{self.baseFilename}.1")
+
+        self.stream = self._open()
 
 
 class RequestContextFilter(logging.Filter):
@@ -416,7 +481,7 @@ def setup_logging(
     root_logger.addHandler(console_handler)
 
     # 文件 handler（按大小轮转）
-    file_handler = RotatingFileHandler(
+    file_handler = TimeSizeRotationFileHandler(
         filename=str(log_path),
         maxBytes=max_bytes,
         backupCount=backup_count,
@@ -431,7 +496,7 @@ def setup_logging(
 
     # 错误日志文件 handler（单独记录ERROR及以上级别）
     error_log_path = Path(log_dir) / f"error_{datetime.now().strftime('%Y-%m-%d')}.log"
-    error_handler = RotatingFileHandler(
+    error_handler = TimeSizeRotationFileHandler(
         filename=str(error_log_path),
         maxBytes=max_bytes,
         backupCount=backup_count,
