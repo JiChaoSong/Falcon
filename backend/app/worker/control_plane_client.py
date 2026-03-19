@@ -93,7 +93,7 @@ class WorkerControlPlaneClient:
 
     def _create_channel(self):
         return grpc.insecure_channel(
-            f"{worker_settings.GRPC_CONTROL_HOST}:{worker_settings.GRPC_CONTROL_PORT}"
+            f"{worker_settings.GRPC_MASTER_HOST}:{worker_settings.GRPC_MASTER_PORT}"
         )
 
     def _parse_tags(self) -> list[str]:

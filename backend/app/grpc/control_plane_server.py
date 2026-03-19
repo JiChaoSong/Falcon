@@ -130,7 +130,7 @@ class ControlPlaneGrpcServer:
             ControlPlaneRuntimeServicer(),
             self._server,
         )
-        self._server.add_insecure_port(f"{settings.GRPC_CONTROL_HOST}:{settings.GRPC_CONTROL_PORT}")
+        self._server.add_insecure_port(f"{settings.GRPC_MASTER_HOST}:{settings.GRPC_MASTER_PORT}")
         self._thread = threading.Thread(target=self._server.start, name="grpc-control-plane", daemon=True)
         self._thread.start()
 

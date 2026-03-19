@@ -39,7 +39,7 @@ class GrpcWorkerDispatcherService:
                         duration=int(task.duration or 0),
                         execution_strategy=getattr(task.execution_strategy, "value", str(task.execution_strategy)),
                         execution_plan_json=json.dumps(execution_plan, ensure_ascii=True),
-                        control_plane_addr=f"{settings.GRPC_CONTROL_HOST}:{settings.GRPC_CONTROL_PORT}",
+                        control_plane_addr=f"{settings.GRPC_MASTER_HOST}:{settings.GRPC_MASTER_PORT}",
                     ),
                 ),
                 timeout=5,

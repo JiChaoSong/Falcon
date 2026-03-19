@@ -25,12 +25,6 @@ class Settings(BaseSettings):
 
     HOST: str = "127.0.0.1"
     PORT: int = 8008
-    GRPC_CONTROL_HOST: str = "127.0.0.1"
-    GRPC_CONTROL_PORT: int = 50051
-    GRPC_WORKER_ID: str = "worker-local"
-    GRPC_WORKER_HOST: str = "127.0.0.1"
-    GRPC_WORKER_PORT: int = 50061
-    GRPC_WORKERS: str = "127.0.0.1:50061"
 
     DATABASE_URL: str = "mysql+pymysql://root:123456@localhost:3306/perflocust"
 
@@ -63,15 +57,18 @@ class Settings(BaseSettings):
             "/favicon.ico",
         ]
     )
-    CONTROL_PLANE_BASE_URL: str = "http://127.0.0.1:8008"
+
+    GRPC_MASTER_HOST: str = "127.0.0.1"
+    GRPC_MASTER_PORT: int = 50051
     WORKER_SHARED_TOKEN: str = "change-me-worker-token"
     GRPC_WORKER_TAGS: str = ""
     GRPC_WORKER_METADATA_JSON: str = "{}"
     GRPC_WORKER_CAPACITY: int = 4
-    GRPC_WORKER_HEARTBEAT_INTERVAL_SECONDS: int = 5
     GRPC_WORKER_HEARTBEAT_TIMEOUT_SECONDS: int = 15
     GRPC_WORKER_HISTORY_RETENTION_SECONDS: int = 86400
     GRPC_SCHEDULING_STRATEGY: str = "least_loaded"
+    GRPC_WORKER_HEALTH_CHECK_ENABLED:bool = True
+    GRPC_WORKER_HEALTH_CHECK_INTERVAL_SECONDS:int = 30
 
     ERROR_MSG_MAP: Optional[Dict[str, str]] = {
         "no_such_attribute": "属性不存在",
@@ -191,9 +188,8 @@ class WorkerSettings(BaseSettings):
     ENVIRONMENT: str = "local"
     LOG_LEVEL: str = "INFO"
 
-    CONTROL_PLANE_BASE_URL: str = "http://127.0.0.1:8008"
-    GRPC_CONTROL_HOST: str = "127.0.0.1"
-    GRPC_CONTROL_PORT: int = 50051
+    GRPC_MASTER_HOST: str = "127.0.0.1"
+    GRPC_MASTER_PORT: int = 50051
     WORKER_SHARED_TOKEN: str = "change-me-worker-token"
 
     GRPC_WORKER_ID: str = "worker-local"
