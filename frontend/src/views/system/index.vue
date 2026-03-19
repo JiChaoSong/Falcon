@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import SystemConfigPanel from '@/views/system/components/SystemConfigPanel.vue'
 import UserManagementPanel from '@/views/system/components/UserManagementPanel.vue'
 import WorkerManagementPanel from '@/views/system/components/WorkerManagementPanel.vue'
 import { useUserStore } from '@/store/modules/user'
+import { useRoute, useRouter } from 'vue-router'
 
 const userStore = useUserStore()
-const activeKey = ref(userStore.userInfo?.is_admin ? 'users' : 'config')
+const route = useRoute()
+const router = useRouter()
+const defaultKey = userStore.userInfo?.is_admin ? 'users' : 'config'
+const activeKey = ref((route.query.tab as string) || defaultKey)
 
 const tabs = computed(() => {
   const items = [
@@ -38,6 +42,16 @@ const tabs = computed(() => {
 
 const currentPanel = computed(() => {
   return tabs.value.find(item => item.key === activeKey.value)?.component || SystemConfigPanel
+})
+
+watch(activeKey, (value) => {
+  router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      tab: value,
+    },
+  })
 })
 </script>
 

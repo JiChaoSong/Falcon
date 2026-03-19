@@ -5,7 +5,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.exception import ParamException
-from app.models import TaskMetricSecond, TaskRun, TaskRunStatusEnum, Tasks, TaskScenario, TaskStatusEnum
+from app.models import TaskMetricSecond, TaskRun, TaskRunStatusEnum, Tasks, TaskScenario, TaskStatusEnum, Worker
 from app.services.access_control_service import AccessControlService
 from app.services.grpc_worker_dispatcher_service import GrpcWorkerDispatcherService
 
@@ -45,7 +45,11 @@ class TaskRuntimeService:
         self.access_control.ensure_project_manage_access(task.project_id)
 
         latest_run = self._get_latest_task_run(task_id)
-        if not latest_run or latest_run.status != TaskRunStatusEnum.RUNNING:
+        if not latest_run:
+            raise ParamException("Task is not running.")
+        if latest_run.status == TaskRunStatusEnum.STOPPING:
+            raise ParamException("Task is already stopping.")
+        if latest_run.status != TaskRunStatusEnum.RUNNING:
             raise ParamException("Task is not running.")
 
         worker_task_id = str((latest_run.summary_json or {}).get("worker_task_id") or "")
@@ -62,10 +66,14 @@ class TaskRuntimeService:
             worker_addr=worker_addr,
         )
 
+        latest_run.status = TaskRunStatusEnum.STOPPING
+        task.status = TaskStatusEnum.STOPPING
+        self.db.commit()
+
         return {
             "task_id": task.id,
             "task_run_id": latest_run.id,
-            "status": TaskRunStatusEnum.CANCELED,
+            "status": TaskRunStatusEnum.STOPPING,
         }
 
     def status(self, task_id: int) -> dict[str, Any]:
@@ -175,6 +183,7 @@ class TaskRuntimeService:
             "riskiest_endpoint": to_endpoint_payload(riskiest_endpoint),
             "stats": stats,
             "history": status_payload.get("history", []),
+            "worker_snapshot": status_payload.get("worker_snapshot"),
         }
 
     def _build_runtime_status(self, task: Tasks, task_run: TaskRun | None) -> dict[str, Any]:
@@ -242,6 +251,58 @@ class TaskRuntimeService:
             "failure_samples": summary.get("failure_samples", []),
             "stats": summary.get("stats", []),
             "history": history,
+            "worker_snapshot": self._build_worker_snapshot(task_run),
+        }
+
+    def _build_worker_snapshot(self, task_run: TaskRun | None) -> dict[str, Any] | None:
+        if not task_run:
+            return None
+
+        summary = dict(task_run.summary_json or {})
+        worker_id = str(summary.get("worker_id") or "").strip()
+        worker_addr = str(summary.get("worker_addr") or "").strip() or None
+        if not worker_id:
+            return None
+
+        worker = self.db.execute(
+            Select(Worker).where(
+                Worker.worker_id == worker_id,
+                Worker.is_deleted == false(),
+            )
+        ).scalar_one_or_none()
+
+        metadata = dict((worker.metadata_json if worker else None) or {})
+        system = dict(metadata.get("system") or {})
+        resources = dict(metadata.get("resources") or {})
+        process = dict(metadata.get("process") or {})
+
+        return {
+            "worker_id": worker_id,
+            "worker_addr": worker_addr or (worker.address if worker else None),
+            "worker_status": worker.status if worker else None,
+            "sampled_at": metadata.get("sampled_at"),
+            "system": {
+                "hostname": system.get("hostname"),
+                "platform": system.get("platform"),
+                "ip": system.get("ip"),
+            },
+            "resources": {
+                "cpu_percent": resources.get("cpu_percent"),
+                "load_1": resources.get("load_1"),
+                "memory_percent": resources.get("memory_percent"),
+                "memory_used_mb": resources.get("memory_used_mb"),
+                "memory_total_mb": resources.get("memory_total_mb"),
+                "disk_percent": resources.get("disk_percent"),
+                "disk_used_gb": resources.get("disk_used_gb"),
+                "disk_total_gb": resources.get("disk_total_gb"),
+                "net_sent_kbps": resources.get("net_sent_kbps"),
+                "net_recv_kbps": resources.get("net_recv_kbps"),
+            },
+            "process": {
+                "cpu_percent": process.get("cpu_percent"),
+                "memory_mb": process.get("memory_mb"),
+                "threads": process.get("threads"),
+            },
         }
 
     def _get_task(self, task_id: int) -> Tasks:
@@ -303,7 +364,11 @@ class TaskRuntimeService:
                 TaskRun.is_deleted == false(),
             ).order_by(TaskRun.created_at.desc()).limit(1)
         ).scalars().first()
-        if latest_run and latest_run.status in {TaskRunStatusEnum.PENDING, TaskRunStatusEnum.RUNNING}:
+        if latest_run and latest_run.status in {
+            TaskRunStatusEnum.PENDING,
+            TaskRunStatusEnum.RUNNING,
+            TaskRunStatusEnum.STOPPING,
+        }:
             raise ParamException("Task already has an active run.")
 
         task_run = TaskRun(task_id=locked_task.id, status=TaskRunStatusEnum.PENDING, summary_json={})

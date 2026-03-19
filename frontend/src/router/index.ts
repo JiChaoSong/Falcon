@@ -14,7 +14,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Home',
         component: () => import('@/views/home/index.vue'),
         meta: {
-          title: '首页',
+          title: '控制台',
           requiresAuth: true,
           menu: { icon: 'dashboard', show: true, order: 1 },
         },
@@ -24,7 +24,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Project',
         component: () => import('@/views/project/index.vue'),
         meta: {
-          title: '项目',
+          title: '项目管理',
           requiresAuth: true,
           menu: { icon: 'project', show: true, order: 2 },
         },
@@ -34,7 +34,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Csse',
         component: () => import('@/views/case/index.vue'),
         meta: {
-          title: '用例',
+          title: '用例管理',
           requiresAuth: true,
           menu: { icon: 'csse', show: true, order: 3 },
         },
@@ -44,7 +44,7 @@ const routes: RouteRecordRaw[] = [
         name: 'Scenario',
         component: () => import('@/views/scenario/index.vue'),
         meta: {
-          title: '场景',
+          title: '场景管理',
           requiresAuth: true,
           menu: { icon: 'scenario', show: true, order: 4 },
         },
@@ -54,9 +54,19 @@ const routes: RouteRecordRaw[] = [
         name: 'Task',
         component: () => import('@/views/task/index.vue'),
         meta: {
-          title: '任务',
+          title: '任务管理',
           requiresAuth: true,
           menu: { icon: 'task', show: true, order: 5 },
+        },
+      },
+      {
+        path: 'task/detail/:taskId',
+        name: 'TaskDetail',
+        component: () => import('@/views/task/detail.vue'),
+        meta: {
+          title: '任务详情',
+          requiresAuth: true,
+          menu: { show: false },
         },
       },
       {
@@ -64,7 +74,7 @@ const routes: RouteRecordRaw[] = [
         name: 'System',
         component: () => import('@/views/system/index.vue'),
         meta: {
-          title: '系统',
+          title: '系统管理',
           requiresAuth: true,
           menu: { icon: 'system', show: true, order: 6 },
         },
@@ -84,7 +94,7 @@ const routes: RouteRecordRaw[] = [
         name: 'AccountSettings',
         component: () => import('@/views/user/settings/index.vue'),
         meta: {
-          title: '账户设置',
+          title: '账号设置',
           requiresAuth: true,
           menu: { show: false },
         },
@@ -113,7 +123,7 @@ const routes: RouteRecordRaw[] = [
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/404/NotFound.vue'),
-    meta: { title: '页面未找到' },
+    meta: { title: '页面不存在' },
   },
 ]
 

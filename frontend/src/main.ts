@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 import 'ant-design-vue/dist/reset.css'
+import './assets/styles/global.css'
 import {createPinia} from "pinia";
 
 // 创建实例

@@ -33,6 +33,13 @@ class TaskRuntimeSocketManager {
   private currentTaskId: number | null = null
   private token = ''
   private readonly wsBaseUrl = toWebSocketBaseUrl(resolveApiBaseUrl())
+  
+  // 重连相关状态
+  private reconnectAttempts = 0
+  private maxReconnectAttempts = 10
+  private baseReconnectDelay = 1000 // 1秒
+  private maxReconnectDelay = 30000 // 30秒
+  private reconnectDelayMultiplier = 1.5
 
   private onMessageCallback: ((message: TaskRuntimeSocketMessage) => void) | null = null
   private onConnectionChangeCallback: ((connected: boolean) => void) | null = null
@@ -56,6 +63,7 @@ class TaskRuntimeSocketManager {
 
     this.socket = new WebSocket(targetUrl)
     this.socket.onopen = () => {
+      this.reconnectAttempts = 0 // 重置重连计数
       this.startHeartbeat()
       this.onConnectionChangeCallback?.(true)
     }
@@ -70,15 +78,14 @@ class TaskRuntimeSocketManager {
       console.error('Task runtime websocket error:', error)
       this.onErrorCallback?.(error)
     }
-    this.socket.onclose = () => {
+    this.socket.onclose = (event) => {
       this.stopHeartbeat()
       this.onConnectionChangeCallback?.(false)
       this.socket = null
 
-      if (!this.manualClose && this.currentTaskId && this.token) {
-        this.reconnectTimer = setTimeout(() => {
-          this.connect(this.currentTaskId as number, this.token)
-        }, 3000)
+      // 只有非手动关闭且未达到最大重连次数时才重连
+      if (!this.manualClose && this.currentTaskId && this.token && this.reconnectAttempts < this.maxReconnectAttempts) {
+        this.scheduleReconnect()
       }
     }
   }
@@ -87,6 +94,7 @@ class TaskRuntimeSocketManager {
     this.manualClose = true
     this.currentTaskId = null
     this.token = ''
+    this.reconnectAttempts = 0 // 重置重连计数
     this.clearReconnectTimer()
     this.closeSocket()
     this.onConnectionChangeCallback?.(false)
@@ -133,6 +141,22 @@ class TaskRuntimeSocketManager {
       this.socket.close()
       this.socket = null
     }
+  }
+
+  private scheduleReconnect() {
+    this.reconnectAttempts++
+    const delay = Math.min(
+      this.baseReconnectDelay * Math.pow(this.reconnectDelayMultiplier, this.reconnectAttempts - 1),
+      this.maxReconnectDelay
+    )
+    
+    console.log(`WebSocket reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`)
+    
+    this.reconnectTimer = setTimeout(() => {
+      if (!this.manualClose && this.currentTaskId && this.token) {
+        this.connect(this.currentTaskId, this.token)
+      }
+    }, delay)
   }
 }
 

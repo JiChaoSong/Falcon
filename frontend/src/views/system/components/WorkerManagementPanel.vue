@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { EditOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
+import { useRoute, useRouter } from 'vue-router'
 import { WorkerApi } from '@/api/worker'
 import type { WorkerInfo, WorkerListQuery, WorkerStatus, WorkerUpdatePayload } from '@/types/worker'
 import { formatDateTime } from '@/utils/tools'
@@ -18,13 +19,15 @@ const loading = ref(false)
 const drawerVisible = ref(false)
 const submitting = ref(false)
 const currentWorkerId = ref('')
+const route = useRoute()
+const router = useRouter()
 
 const statusOptions: Array<{ label: string; value: WorkerStatus }> = [
-  { label: 'online', value: 'online' },
-  { label: 'busy', value: 'busy' },
-  { label: 'degraded', value: 'degraded' },
-  { label: 'offline', value: 'offline' },
-  { label: 'disabled', value: 'disabled' },
+  { label: '在线', value: 'online' },
+  { label: '忙碌', value: 'busy' },
+  { label: '降级', value: 'degraded' },
+  { label: '离线', value: 'offline' },
+  { label: '已禁用', value: 'disabled' },
 ]
 
 const state = reactive({
@@ -67,6 +70,14 @@ const statusColorMap: Record<WorkerStatus, string> = {
   disabled: 'red',
 }
 
+const statusLabelMap: Record<WorkerStatus, string> = {
+  online: '在线',
+  busy: '忙碌',
+  degraded: '降级',
+  offline: '离线',
+  disabled: '已禁用',
+}
+
 const fetchWorkers = async () => {
   loading.value = true
   try {
@@ -82,6 +93,20 @@ const fetchWorkers = async () => {
   }
 }
 
+const syncRouteQuery = () => {
+  router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      tab: 'workers',
+      workerStatus: state.query.status,
+      workerId: state.query.worker_id || undefined,
+      workerTag: state.query.tag || undefined,
+      workerPage: String(state.query.page),
+    },
+  })
+}
+
 const resetFilters = async () => {
   state.query = {
     page: 1,
@@ -90,6 +115,7 @@ const resetFilters = async () => {
     status: undefined,
     tag: '',
   }
+  syncRouteQuery()
   await fetchWorkers()
 }
 
@@ -154,10 +180,29 @@ const submitWorkerUpdate = async () => {
 const onTableChange = async (page: number, pageSize: number) => {
   state.query.page = page
   state.query.page_size = pageSize
+  syncRouteQuery()
   await fetchWorkers()
 }
 
 onMounted(() => {
+  const queryStatus = route.query.workerStatus as WorkerStatus | undefined
+  const queryWorkerId = route.query.workerId as string | undefined
+  const queryTag = route.query.workerTag as string | undefined
+  const queryPage = Number(route.query.workerPage || 1)
+
+  if (queryStatus && ['online', 'busy', 'degraded', 'offline', 'disabled'].includes(queryStatus)) {
+    state.query.status = queryStatus
+  }
+  if (queryWorkerId) {
+    state.query.worker_id = queryWorkerId
+  }
+  if (queryTag) {
+    state.query.tag = queryTag
+  }
+  if (Number.isFinite(queryPage) && queryPage > 0) {
+    state.query.page = queryPage
+  }
+
   fetchWorkers()
 })
 </script>
@@ -179,7 +224,7 @@ onMounted(() => {
             <a-space>
               <a-badge :status="record.is_timeout ? 'error' : 'processing'" />
               <a-tag :color="statusColorMap[record.status]">
-                {{ record.status }}
+                {{ statusLabelMap[record.status] }}
               </a-tag>
             </a-space>
           </template>

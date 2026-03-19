@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 import itertools
 from typing import Any
 
+import grpc
 from sqlalchemy import Select, false
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.exception import ParamException
 from app.core.logging_config import get_logger
+from app.grpc.generated import worker_runtime_pb2, worker_runtime_pb2_grpc
 from app.models import Worker, WorkerSchedulingStrategyEnum, WorkerStatusEnum
 
 logger = get_logger(__name__)
@@ -48,7 +51,7 @@ class WorkerRegistryService:
             worker.capacity = max(int(capacity or 1), 1)
             worker.scheduling_weight = max(int(scheduling_weight or 100), 1)
             worker.tags = normalized_tags
-            worker.metadata_json = metadata_json or {}
+            worker.metadata_json = self._normalize_metadata(metadata_json)
             worker.status = self._derive_status(worker.status, worker.running_tasks, worker.capacity, None)
             worker.last_heartbeat_at = now
             worker.last_seen_error = None
@@ -64,7 +67,7 @@ class WorkerRegistryService:
                 running_tasks=0,
                 scheduling_weight=max(int(scheduling_weight or 100), 1),
                 tags=normalized_tags,
-                metadata_json=metadata_json or {},
+                metadata_json=self._normalize_metadata(metadata_json),
                 registered_at=now,
                 last_heartbeat_at=now,
                 last_seen_error=None,
@@ -95,7 +98,7 @@ class WorkerRegistryService:
         if tags is not None:
             worker.tags = self._normalize_tags(tags)
         if metadata_json is not None:
-            worker.metadata_json = metadata_json
+            worker.metadata_json = self._normalize_metadata(metadata_json)
         if version:
             worker.version = version
         worker.last_seen_error = (last_seen_error or "")[:500] or None
@@ -152,7 +155,7 @@ class WorkerRegistryService:
         if tags is not None:
             worker.tags = self._normalize_tags(tags)
         if metadata_json is not None:
-            worker.metadata_json = metadata_json
+            worker.metadata_json = self._normalize_metadata(metadata_json)
         self.db.commit()
         self.db.refresh(worker)
         return self._to_payload(worker)
@@ -285,6 +288,16 @@ class WorkerRegistryService:
     def _normalize_tags(self, tags: list[str] | None) -> list[str]:
         return [str(item).strip() for item in (tags or []) if str(item).strip()]
 
+    def _normalize_metadata(self, metadata_json: dict[str, Any] | None) -> dict[str, Any]:
+        metadata = dict(metadata_json or {})
+        return {
+            **metadata,
+            "system": dict(metadata.get("system") or {}),
+            "resources": dict(metadata.get("resources") or {}),
+            "process": dict(metadata.get("process") or {}),
+            "sampled_at": metadata.get("sampled_at"),
+        }
+
     def _derive_status(
         self,
         current_status: WorkerStatusEnum,
@@ -333,3 +346,87 @@ class WorkerRegistryService:
             "created_at": worker.created_at,
             "updated_at": worker.updated_at,
         }
+
+    async def perform_health_checks(self) -> None:
+        """执行主动健康检查，更新 Worker 状态"""
+        workers = self.db.execute(
+            Select(Worker).where(
+                Worker.is_deleted == false(),
+                Worker.status.in_([WorkerStatusEnum.ONLINE, WorkerStatusEnum.BUSY, WorkerStatusEnum.DEGRADED]),
+            )
+        ).scalars().all()
+
+        if not workers:
+            return
+
+        # 并发执行健康检查
+        tasks = [self._check_worker_health(worker) for worker in workers]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 更新状态
+        dirty = False
+        for worker, result in zip(workers, results):
+            if isinstance(result, Exception):
+                logger.warning(f"Health check failed for worker {worker.worker_id}: {result}")
+                if worker.status != WorkerStatusEnum.DEGRADED:
+                    worker.status = WorkerStatusEnum.DEGRADED
+                    worker.last_seen_error = str(result)
+                    dirty = True
+            else:
+                health_status, response_time, error_msg = result
+                if health_status:
+                    # 健康检查通过
+                    if worker.status == WorkerStatusEnum.DEGRADED:
+                        worker.status = WorkerStatusEnum.ONLINE
+                        worker.last_seen_error = None
+                        dirty = True
+                    # 更新性能指标到 metadata
+                    metadata = worker.metadata_json or {}
+                    metadata["last_health_check"] = {
+                        "response_time_ms": response_time,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                    worker.metadata_json = metadata
+                    dirty = True
+                else:
+                    # 健康检查失败
+                    if worker.status != WorkerStatusEnum.DEGRADED:
+                        worker.status = WorkerStatusEnum.DEGRADED
+                        worker.last_seen_error = error_msg
+                        dirty = True
+
+        if dirty:
+            self.db.commit()
+
+    async def _check_worker_health(self, worker: Worker) -> tuple[bool, float, str]:
+        """检查单个 Worker 的健康状态"""
+        channel = None
+        try:
+            channel = grpc.insecure_channel(worker.address, options=[
+                ('grpc.keepalive_time_ms', 10000),
+                ('grpc.keepalive_timeout_ms', 5000),
+            ])
+            stub = worker_runtime_pb2_grpc.WorkerRuntimeStub(channel)
+            
+            # 执行健康检查请求
+            started_at = datetime.now(timezone.utc)
+            response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: stub.Health(
+                    worker_runtime_pb2.HealthRequest(),
+                    timeout=5.0
+                )
+            )
+            elapsed = (datetime.now(timezone.utc) - started_at).total_seconds() * 1000
+            
+            return True, elapsed, ""
+            
+        except grpc.RpcError as exc:
+            elapsed = (datetime.now(timezone.utc) - started_at).total_seconds() * 1000 if 'started_at' in locals() else 0
+            return False, elapsed, f"gRPC error: {exc.details() or exc.code().name}"
+        except Exception as exc:
+            elapsed = (datetime.now(timezone.utc) - started_at).total_seconds() * 1000 if 'started_at' in locals() else 0
+            return False, elapsed, f"Health check error: {str(exc)}"
+        finally:
+            if channel:
+                await asyncio.get_event_loop().run_in_executor(None, channel.close)

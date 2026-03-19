@@ -1,5 +1,5 @@
 from app.core.audit import register_audit_listeners
-from app.core.logging_config import setup_logging
+from app.core.logging_config import setup_logging, get_logger
 from app.handler.validation_exception import register_validation_exception_handler
 from app.middleware.audit import AuditMiddleware
 from app.middleware.auth import AuthMiddleware
@@ -12,10 +12,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.middleware.gzip import GZipMiddleware
 
-from app.api import project, case, scenario, task, user, worker, ws
+from app.api import project, case, scenario, task, user, worker, ws, dashboard
 from app.core.config import settings
 from app.db import Base
 from app.grpc.control_plane_server import control_plane_grpc_server
+
+logger = get_logger(__name__)
 
 # 初始化日志
 setup_logging(
@@ -29,10 +31,41 @@ setup_logging(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.services.worker_registry_service import WorkerRegistryService
+    from app.db import get_db
+    import asyncio
+    
     register_audit_listeners(Base)
     control_plane_grpc_server.start()
+    
+    # 启动主动健康检查任务
+    health_check_task = None
+    if settings.GRPC_WORKER_HEALTH_CHECK_ENABLED:
+        db_session = next(get_db())
+        registry = WorkerRegistryService(db_session)
+        
+        async def health_check_loop():
+            while True:
+                try:
+                    await registry.perform_health_checks()
+                except Exception as exc:
+                    logger.error(f"Health check loop error: {exc}")
+                await asyncio.sleep(max(int(settings.GRPC_WORKER_HEALTH_CHECK_INTERVAL_SECONDS or 30), 10))
+        
+        health_check_task = asyncio.create_task(health_check_loop())
+        logger.info("Worker health check loop started")
 
     yield
+    
+    # 清理资源
+    if health_check_task:
+        health_check_task.cancel()
+        try:
+            await health_check_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Worker health check loop stopped")
+    
     control_plane_grpc_server.stop()
 
 app = FastAPI(
@@ -90,6 +123,7 @@ app.include_router(project.router)
 app.include_router(case.router)
 app.include_router(scenario.router)
 app.include_router(task.router)
+app.include_router(dashboard.router)
 app.include_router(user.router)
 app.include_router(worker.router)
 app.include_router(ws.router)

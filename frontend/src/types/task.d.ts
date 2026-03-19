@@ -9,6 +9,17 @@ export interface TaskScenarioBind {
 
 export interface TaskScenarioInfo extends TaskScenarioBind {
   scenario: string
+  cases: TaskCaseInfo[]
+}
+
+export interface TaskCaseInfo {
+  id: number
+  name: string
+  method?: string | null
+  url: string
+  status: string
+  order: number
+  weight: number
 }
 
 export interface TaskInfo extends BaseEntity {
@@ -106,6 +117,35 @@ export interface TaskMetricPoint {
   active_users: number
 }
 
+export interface WorkerSnapshot {
+  worker_id: string | null
+  worker_addr: string | null
+  worker_status: string | null
+  sampled_at: string | null
+  system: {
+    hostname: string | null
+    platform: string | null
+    ip: string | null
+  }
+  resources: {
+    cpu_percent: number | null
+    load_1: number | null
+    memory_percent: number | null
+    memory_used_mb: number | null
+    memory_total_mb: number | null
+    disk_percent: number | null
+    disk_used_gb: number | null
+    disk_total_gb: number | null
+    net_sent_kbps: number | null
+    net_recv_kbps: number | null
+  }
+  process: {
+    cpu_percent: number | null
+    memory_mb: number | null
+    threads: number | null
+  }
+}
+
 export interface TaskRuntimeStatus {
   task_id: number
   task_run_id: number | null
@@ -130,6 +170,7 @@ export interface TaskRuntimeStatus {
   failure_samples: Array<Record<string, unknown>>
   stats: Array<Record<string, unknown>>
   history: TaskMetricPoint[]
+  worker_snapshot?: WorkerSnapshot | null
 }
 
 export interface TaskRunHistoryItem {
@@ -188,4 +229,5 @@ export interface TaskReportData {
   riskiest_endpoint: TaskReportEndpoint | null
   stats: Array<Record<string, unknown>>
   history: TaskMetricPoint[]
+  worker_snapshot?: WorkerSnapshot | null
 }

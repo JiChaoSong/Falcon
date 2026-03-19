@@ -24,6 +24,9 @@ class CaseRunner:
             url=url,
             headers=headers,
             body=body,
+            retry_count=int(case.get("retry_count") or 3),
+            retry_delay=float(case.get("retry_delay") or 1.0),
+            retry_backoff=float(case.get("retry_backoff") or 2.0),
         )
 
         expected_status = case.get("expected_status")

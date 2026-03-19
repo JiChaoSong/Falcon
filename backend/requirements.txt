@@ -14,3 +14,4 @@ typer==0.21.1
 cryptography==46.0.4
 grpcio==1.78.0
 grpcio-tools==1.78.0
+psutil==7.1.0
