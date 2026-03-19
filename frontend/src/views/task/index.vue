@@ -83,13 +83,13 @@
         <Col>
           <Button @click="resetFilters">
             <template #icon><RedoOutlined /></template>
-            重置筛选条件
+            重置
           </Button>
         </Col>
         <Col>
           <Button type="primary" @click="applyFilters">
             <template #icon><SearchOutlined /></template>
-            查询任务
+            查询
           </Button>
         </Col>
       </Row>
