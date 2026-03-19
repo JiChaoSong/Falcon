@@ -366,7 +366,7 @@ const quickActions = [
     title: '用例管理',
     description: '进入用例页面，维护接口、脚本和断言规则。',
     cta: '查看用例',
-    onClick: () => goTo('/csse'),
+    onClick: () => goTo('/case'),
   },
   {
     title: '系统管理',

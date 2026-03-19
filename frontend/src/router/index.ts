@@ -36,7 +36,7 @@ const routes: RouteRecordRaw[] = [
         meta: {
           title: '用例管理',
           requiresAuth: true,
-          menu: { icon: 'csse', show: true, order: 3 },
+          menu: { icon: 'case', show: true, order: 3 },
         },
       },
       {

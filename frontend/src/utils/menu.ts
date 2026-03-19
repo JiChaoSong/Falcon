@@ -20,7 +20,7 @@ import {
 const iconMap: Record<string, any> = {
     home: HomeOutlined,
     project: ProjectOutlined,
-    csse: UnorderedListOutlined,
+    case: UnorderedListOutlined,
     scenario: SlidersOutlined,
     task: PlayCircleOutlined,
     system: SettingOutlined
