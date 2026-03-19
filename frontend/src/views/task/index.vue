@@ -500,7 +500,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Card as ACard,
   Row,
@@ -552,6 +552,7 @@ type FormScenarioBind = TaskScenarioBind & { row_key: string }
 
 const userStore = useUserStore()
 
+const route = useRoute()
 const router = useRouter()
 
 const createDefaultScenarioRow = (): FormScenarioBind => ({
@@ -723,6 +724,17 @@ const fetchTaskList = async () => {
 
 const applyFilters = async () => {
   state.currentPage = 1
+  await router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      name: state.searchFilters.name || undefined,
+      status: state.searchFilters.status || undefined,
+      project_id: state.searchFilters.project_id ? String(state.searchFilters.project_id) : undefined,
+      scenario_id: state.searchFilters.scenario_id ? String(state.searchFilters.scenario_id) : undefined,
+      page: '1',
+    },
+  })
   await fetchTaskList()
 }
 
@@ -734,6 +746,7 @@ const resetFilters = async () => {
     scenario_id: undefined,
   }
   state.currentPage = 1
+  await router.replace({ path: route.path })
   await fetchScenarioFilterOptions()
   await fetchTaskList()
 }
@@ -982,6 +995,28 @@ const deleteTask = async (taskId: number) => {
 }
 
 onMounted(async () => {
+  const queryName = route.query.name as string | undefined
+  const queryStatus = route.query.status as string | undefined
+  const queryProjectId = Number(route.query.project_id)
+  const queryScenarioId = Number(route.query.scenario_id)
+  const queryPage = Number(route.query.page || 1)
+
+  if (queryName) {
+    state.searchFilters.name = queryName
+  }
+  if (queryStatus) {
+    state.searchFilters.status = queryStatus
+  }
+  if (Number.isFinite(queryProjectId) && queryProjectId > 0) {
+    state.searchFilters.project_id = queryProjectId
+  }
+  if (Number.isFinite(queryScenarioId) && queryScenarioId > 0) {
+    state.searchFilters.scenario_id = queryScenarioId
+  }
+  if (Number.isFinite(queryPage) && queryPage > 0) {
+    state.currentPage = queryPage
+  }
+
   await fetchProjectOptions()
   await fetchOwnerOptions()
   await fetchScenarioFilterOptions()

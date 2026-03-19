@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.middleware.gzip import GZipMiddleware
 
-from app.api import project, case, scenario, task, user, worker, ws
+from app.api import project, case, scenario, task, user, worker, ws, dashboard
 from app.core.config import settings
 from app.db import Base
 from app.grpc.control_plane_server import control_plane_grpc_server
@@ -123,6 +123,7 @@ app.include_router(project.router)
 app.include_router(case.router)
 app.include_router(scenario.router)
 app.include_router(task.router)
+app.include_router(dashboard.router)
 app.include_router(user.router)
 app.include_router(worker.router)
 app.include_router(ws.router)
