@@ -34,6 +34,7 @@
             <Select.Option value="">全部状态</Select.Option>
             <Select.Option value="pending">待执行</Select.Option>
             <Select.Option value="running">执行中</Select.Option>
+            <Select.Option value="stopping">停止中</Select.Option>
             <Select.Option value="completed">已完成</Select.Option>
             <Select.Option value="failed">执行失败</Select.Option>
             <Select.Option value="canceled">已取消</Select.Option>
@@ -149,13 +150,13 @@
                   <EyeOutlined />
                 </Button>
               </Tooltip>
-              <Tooltip v-if="record.status !== 'running'" title="开始执行">
+              <Tooltip v-if="!['running', 'stopping'].includes(record.status)" title="开始执行">
                 <Button type="link" size="small" @click="updateTaskStatus(record.id, 'running')">
                   <PlayCircleOutlined />
                 </Button>
               </Tooltip>
               <Tooltip v-else title="停止任务">
-                <Button type="link" size="small" danger @click="updateTaskStatus(record.id, 'canceled')">
+                <Button type="link" size="small" danger :disabled="record.status === 'stopping'" @click="updateTaskStatus(record.id, 'canceled')">
                   <StopOutlined />
                 </Button>
               </Tooltip>
@@ -264,6 +265,7 @@
               <Select v-model:value="state.formData.status">
                 <Select.Option value="pending">待执行</Select.Option>
                 <Select.Option value="running">执行中</Select.Option>
+                <Select.Option value="stopping">停止中</Select.Option>
                 <Select.Option value="completed">已完成</Select.Option>
                 <Select.Option value="failed">执行失败</Select.Option>
                 <Select.Option value="canceled">已取消</Select.Option>
@@ -606,6 +608,7 @@ const state = reactive({
 const statusMap: Record<string, { text: string; color: string }> = {
   pending: { text: '待执行', color: 'default' },
   running: { text: '执行中', color: 'green' },
+  stopping: { text: '停止中', color: 'orange' },
   completed: { text: '已完成', color: 'blue' },
   failed: { text: '执行失败', color: 'red' },
   canceled: { text: '已取消', color: 'orange' },

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue';
+import { computed, defineAsyncComponent, ref, onMounted, onUnmounted } from 'vue';
 import { formatNumber, formatNumberWithCommas, formatPercent } from '@/utils/tools';
 import { MetricHistoryPoint, Metrics, Stats } from "@/layout/type.ts";
 
@@ -16,6 +16,10 @@ const safeMetrics = computed(() => props.metrics);
 const safeDataSource = computed(() => props.dataSource ?? []);
 const safeHistory = computed(() => props.history ?? []);
 
+// 图表虚拟化相关状态
+const visibleCharts = ref<Set<string>>(new Set());
+const chartObserver = ref<IntersectionObserver | null>(null);
+
 const customRender = {
   twoDecimal: (text: number) => formatNumber(text),
   integer: (text: number) => {
@@ -26,6 +30,66 @@ const customRender = {
   },
   withCommas: (text: number) => formatNumberWithCommas(text),
 };
+
+// 图表虚拟化相关方法
+const setupChartObserver = () => {
+  if (typeof window === 'undefined' || !window.IntersectionObserver) {
+    // 降级：所有图表都设为可见
+    chartConfigs.value.forEach(chart => visibleCharts.value.add(chart.key));
+    return;
+  }
+
+  chartObserver.value = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        const chartKey = entry.target.getAttribute('data-chart-key');
+        if (!chartKey) return;
+
+        if (entry.isIntersecting) {
+          visibleCharts.value.add(chartKey);
+        } else {
+          // 延迟移除，避免快速滚动时的闪烁
+          setTimeout(() => {
+            if (!entry.isIntersecting) {
+              visibleCharts.value.delete(chartKey);
+            }
+          }, 100);
+        }
+      });
+    },
+    {
+      root: null,
+      rootMargin: '50px', // 提前50px开始加载
+      threshold: 0.1, // 10%可见时触发
+    }
+  );
+};
+
+const observeChart = (element: Element, chartKey: string) => {
+  if (element && chartObserver.value) {
+    element.setAttribute('data-chart-key', chartKey);
+    chartObserver.value.observe(element);
+  }
+};
+
+const unobserveChart = (element: Element) => {
+  if (element && chartObserver.value) {
+    chartObserver.value.unobserve(element);
+  }
+};
+
+// 生命周期钩子
+onMounted(() => {
+  setupChartObserver();
+});
+
+onUnmounted(() => {
+  if (chartObserver.value) {
+    chartObserver.value.disconnect();
+    chartObserver.value = null;
+  }
+  visibleCharts.value.clear();
+});
 
 const summaryCards = computed(() => {
   const metrics = safeMetrics.value;
@@ -163,31 +227,44 @@ const tableColumns = [
     </section>
 
     <section class="chart-grid">
-      <EChartPanel
+      <div
         v-for="chart in chartConfigs"
         :key="chart.key"
-        :title="chart.title"
-        :subtitle="chart.subtitle"
-        :labels="chart.labels"
-        :legend="chart.legend"
-        :series="[
-          {
-            name: chart.legend[0],
-            data: chart.values,
-            color: chart.stroke,
-            areaColor: chart.fill
-          },
-          ...(chart.compareValues
-            ? [{
-                name: chart.legend[1],
-                data: chart.compareValues,
-                color: chart.compareStroke,
-                dashed: true,
-                yAxisIndex: chart.key === 'failures' ? 1 : 0
-              }]
-            : [])
-        ]"
-      />
+        ref="observeChart($el, chart.key)"
+        class="chart-container"
+      >
+        <EChartPanel
+          v-if="visibleCharts.has(chart.key)"
+          :title="chart.title"
+          :subtitle="chart.subtitle"
+          :labels="chart.labels"
+          :legend="chart.legend"
+          :series="[
+            {
+              name: chart.legend[0],
+              data: chart.values,
+              color: chart.stroke,
+              areaColor: chart.fill
+            },
+            ...(chart.compareValues
+              ? [{
+                  name: chart.legend[1],
+                  data: chart.compareValues,
+                  color: chart.compareStroke,
+                  dashed: true,
+                  yAxisIndex: chart.key === 'failures' ? 1 : 0
+                }]
+              : [])
+          ]"
+        />
+        <!-- 占位符，保持布局 -->
+        <div v-else class="chart-placeholder" :style="{ height: '400px' }">
+          <div class="placeholder-content">
+            <div class="placeholder-title">{{ chart.title }}</div>
+            <div class="placeholder-subtitle">{{ chart.subtitle }}</div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="report-grid">
@@ -428,40 +505,140 @@ const tableColumns = [
   font-size: 13px;
 }
 
+.chart-container {
+  position: relative;
+}
+
+.chart-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  transition: background-color 0.3s ease;
+}
+
+.chart-placeholder:hover {
+  background: #f5f5f5;
+}
+
+.placeholder-content {
+  text-align: center;
+  color: #999;
+}
+
+.placeholder-title {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.placeholder-subtitle {
+  font-size: 12px;
+}
+
 @media (max-width: 1200px) {
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 
-  .chart-grid,
+  .chart-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
   .report-grid {
     grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .summary-card {
+    padding: 16px;
+  }
+
+  .summary-value {
+    font-size: 28px;
   }
 }
 
 @media (max-width: 768px) {
+  .app-container {
+    padding: 16px;
+  }
+
   .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .chart-grid {
     grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .summary-card {
+    padding: 12px;
+  }
+
+  .summary-title {
+    font-size: 12px;
   }
 
   .summary-value {
     font-size: 24px;
   }
 
-  .chart-head,
-  .table-head,
-  .report-item,
-  .error-row {
-    flex-direction: column;
-    align-items: flex-start;
+  .summary-unit {
+    font-size: 10px;
   }
 
-  .error-meta {
-    align-items: flex-start;
+  .chart-placeholder {
+    height: 300px !important;
   }
 
-  .chart-footer {
-    flex-direction: column;
+  .placeholder-title {
+    font-size: 14px;
+  }
+
+  .placeholder-subtitle {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-container {
+    padding: 8px;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .summary-card {
+    padding: 10px;
+  }
+
+  .summary-title {
+    font-size: 11px;
+  }
+
+  .summary-value {
+    font-size: 20px;
+  }
+
+  .summary-unit {
+    font-size: 9px;
+  }
+
+  .chart-placeholder {
+    height: 250px !important;
+  }
+
+  .placeholder-content {
+    padding: 16px;
   }
 }
 </style>

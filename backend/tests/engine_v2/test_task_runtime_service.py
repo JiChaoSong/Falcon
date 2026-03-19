@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from app.models import TaskRunStatusEnum, TaskStatusEnum
 from app.services.task_runtime_service import TaskRuntimeService
 
 
@@ -91,3 +92,37 @@ def test_task_runtime_report_includes_runtime_distributions(monkeypatch):
     assert report["failure_samples"] == [{"name": "login", "message": "HTTP 500"}]
     assert report["hottest_endpoint"]["name"] == "checkout / login"
     assert report["riskiest_endpoint"]["name"] == "checkout / submit"
+
+
+class _FakeStopSession:
+    def __init__(self):
+        self.commit_count = 0
+
+    def commit(self):
+        self.commit_count += 1
+
+
+def test_stop_marks_task_and_run_as_stopping(monkeypatch):
+    session = _FakeStopSession()
+    service = TaskRuntimeService(session)
+    service.access_control.ensure_project_manage_access = lambda _project_id: None
+
+    task = SimpleNamespace(id=101, project_id=1, status=TaskStatusEnum.RUNNING)
+    latest_run = SimpleNamespace(
+        id=9001,
+        status=TaskRunStatusEnum.RUNNING,
+        summary_json={"worker_task_id": "worker-task-1", "worker_addr": "127.0.0.1:50061"},
+    )
+    dispatched = {}
+
+    monkeypatch.setattr(service, "_get_task", lambda _task_id: task)
+    monkeypatch.setattr(service, "_get_latest_task_run", lambda _task_id: latest_run)
+    service.dispatcher.dispatch_stop = lambda **kwargs: dispatched.update(kwargs)
+
+    result = service.stop(task.id)
+
+    assert result["status"] == TaskRunStatusEnum.STOPPING
+    assert latest_run.status == TaskRunStatusEnum.STOPPING
+    assert task.status == TaskStatusEnum.STOPPING
+    assert session.commit_count == 1
+    assert dispatched["task_run_id"] == latest_run.id

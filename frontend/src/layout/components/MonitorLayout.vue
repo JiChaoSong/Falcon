@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import LogoComponent from "@/layout/components/LogoComponent.vue";
 import MonitorComponent from "@/layout/components/MonitorComponent.vue";
+import MonitorAiPanel from "@/layout/components/MonitorAiPanel.vue";
+import MonitorHotEndpoints from "@/layout/components/MonitorHotEndpoints.vue";
+import MonitorControlBar from "@/layout/components/MonitorControlBar.vue";
+import MonitorStatusDisplay from "@/layout/components/MonitorStatusDisplay.vue";
 import EChartPanel from "@/components/EChartPanel.vue";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -30,6 +34,9 @@ const controlLoading = ref(false);
 const taskRunning = ref(false);
 const wsConnected = ref(false);
 const currentTaskId = ref<number>(Number(route.params.taskId) || 0);
+const FALLBACK_ACTIVATION_DELAY_MS = 4000;
+const FALLBACK_STATUS_POLL_MS = 5000;
+const FALLBACK_DETAILS_POLL_MS = 15000;
 
 const defaultMetric: Metrics = {
   stats: [],
@@ -74,6 +81,7 @@ const defaultTaskInfo: TaskInfo = {
   updated_by: 0,
   updated_by_name: '',
   is_deleted: false,
+  execution_strategy: 'default',
 };
 
 const taskInfo = ref<TaskInfo>({ ...defaultTaskInfo });
@@ -83,6 +91,9 @@ const selectedTaskRunId = ref<number | null>(null);
 const dataSource = ref<Stats[]>([]);
 const metrics = ref<Metrics>({ ...defaultMetric });
 const metricHistory = ref<MetricHistoryPoint[]>([]);
+let fallbackActivationTimer: ReturnType<typeof setTimeout> | null = null;
+let fallbackStatusPollingTimer: ReturnType<typeof setInterval> | null = null;
+let fallbackDetailsPollingTimer: ReturnType<typeof setInterval> | null = null;
 let lastReportRefreshAt = 0;
 
 const safeMetrics = computed(() => metrics.value || defaultMetric);
@@ -91,102 +102,6 @@ const safeTaskReport = computed(() => taskReport.value);
 const selectedTaskRun = computed(() =>
   taskRuns.value.find(item => item.id === selectedTaskRunId.value) || null
 );
-
-const aiInsightToneMap: Record<MonitorRiskLevel, { text: string; color: string }> = {
-  success: { text: '稳定', color: 'green' },
-  warning: { text: '关注', color: 'orange' },
-  danger: { text: '风险', color: 'red' }
-};
-
-const aiInsight = computed<AiInsight>(() => {
-  const runtimeSeconds = safeMetrics.value.runtime_seconds;
-  const stats = dataSource.value;
-  const failRatio = safeMetrics.value.fail_ratio;
-  const totalRps = safeMetrics.value.total_rps;
-  const hotspot = [...stats]
-      .sort((a, b) => (b.current_fail_per_sec + b.avg_response_time / 1000) - (a.current_fail_per_sec + a.avg_response_time / 1000))[0];
-  const p95 = hotspot?.["response_time_percentile_0.95"] ?? 0;
-
-  if (!stats.length) {
-    return {
-      title: '等待监控数据',
-      summary: '当前还没有收到压测指标，AI 将在数据进入后给出实时判断。',
-      level: 'warning',
-      reasons: ['指标流为空，暂时无法判断系统瓶颈。'],
-      actions: ['确认任务已启动，并检查任务配置和目标服务是否可达。'],
-      confidence: 0.42
-    };
-  }
-
-  if (failRatio >= 0.05 || p95 >= 800) {
-    return {
-      title: '接口延迟与失败率正在放大',
-      summary: `${hotspot?.name || '核心接口'} 已成为热点风险点，P95 ${formatNumber(p95)}ms，失败率 ${formatPercent(failRatio)}。`,
-      level: 'danger',
-      reasons: [
-        `总失败率已达到 ${formatPercent(failRatio)}，超过常见压测告警阈值。`,
-        `${hotspot?.name || '热点接口'} 当前失败 ${hotspot?.current_fail_per_sec?.toFixed(2) || '0.00'}/s。`,
-        `并发用户 ${safeMetrics.value.user_count} 下，整体吞吐 ${formatNumber(totalRps)} RPS 出现波动。`
-      ],
-      actions: [
-        '优先检查热点接口对应的数据库连接池、缓存命中率和下游超时。',
-        '下一轮建议降低爬升速率，做 70% 到 100% 目标并发的阶梯压测。',
-        '如果这是验收场景，可先基于 P95 和失败率设置自动止损。'
-      ],
-      confidence: 0.91
-    };
-  }
-
-  if (failRatio >= 0.02 || p95 >= 500 || runtimeSeconds < 180) {
-    return {
-      title: '系统整体可用，但进入观测区间',
-      summary: `当前吞吐 ${formatNumber(totalRps)} RPS，热点接口 ${hotspot?.name || '未知'} 的 P95 为 ${formatNumber(p95)}ms。`,
-      level: 'warning',
-      reasons: [
-        `任务已运行 ${safeMetrics.value.runtime}，仍处于负载爬升后的敏感窗口。`,
-        `热点接口平均响应 ${formatNumber(hotspot?.avg_response_time)}ms，建议持续观察尾延迟。`,
-        `失败率 ${formatPercent(failRatio)}，尚未失控但已有抬头迹象。`
-      ],
-      actions: [
-        '继续观测 3 到 5 分钟，确认指标是否稳定收敛。',
-        '补充慢接口明细和错误码分布，便于区分容量问题与业务异常。',
-        '下一步可以联动日志或 APM，做接口级根因定位。'
-      ],
-      confidence: 0.78
-    };
-  }
-
-  return {
-    title: '压测状态稳定，当前无明显风险',
-    summary: `并发 ${safeMetrics.value.user_count} 下系统保持稳定，当前总吞吐 ${formatNumber(totalRps)} RPS。`,
-    level: 'success',
-    reasons: [
-      `总失败率维持在 ${formatPercent(failRatio)}。`,
-      `热点接口 ${hotspot?.name || '未知'} 的 P95 为 ${formatNumber(p95)}ms，仍在可控范围内。`,
-      `任务已运行 ${safeMetrics.value.runtime}，指标曲线没有明显失真。`
-    ],
-    actions: [
-      '可以逐步继续加压，验证系统容量上限。',
-      '建议在任务结束后自动输出一份 AI 复盘报告。',
-      '如果这是基线压测，可将当前结果沉淀为容量基准。'
-    ],
-    confidence: 0.86
-  };
-});
-
-const hotEndpoints = computed(() => {
-  return [...dataSource.value]
-      .sort((a, b) => {
-        const aScore = a.current_fail_per_sec * 100 + a.avg_response_time;
-        const bScore = b.current_fail_per_sec * 100 + b.avg_response_time;
-        return bScore - aScore;
-      })
-      .slice(0, 3)
-      .map((item) => ({
-        ...item,
-        p95: item["response_time_percentile_0.95"] ?? 0
-      }));
-});
 
 const statusCodeChart = computed(() => {
   const counts = safeTaskReport.value?.status_code_counts || safeMetrics.value.status_code_counts || {};
@@ -244,12 +159,14 @@ const mapTaskStatusToSystemState = (status?: string): SystemState => {
   switch ((status || '').toLowerCase()) {
     case 'running':
       return 'running';
+    case 'stopping':
+      return 'stopping';
     case 'pending':
       return 'ready';
     case 'completed':
       return 'stopped';
     case 'canceled':
-      return 'stopping';
+      return 'stopped';
     case 'failed':
       return 'missing';
     default:
@@ -259,7 +176,7 @@ const mapTaskStatusToSystemState = (status?: string): SystemState => {
 
 const createAggregateStats = (runtime: TaskRuntimeStatus): Stats[] => {
   const runtimeStats = Array.isArray(runtime.stats)
-    ? runtime.stats as Stats[]
+    ? runtime.stats as unknown as Stats[]
     : [];
 
   if (runtimeStats.length) {
@@ -300,7 +217,7 @@ const applyRuntimeStatus = (runtime: TaskRuntimeStatus) => {
     ? runtime.fail_count / runtime.total_requests
     : 0;
 
-  taskRunning.value = runtime.status === 'running';
+  taskRunning.value = runtime.status === 'running' || runtime.status === 'stopping';
   dataSource.value = createAggregateStats(runtime);
   metrics.value = {
     stats: dataSource.value,
@@ -374,6 +291,22 @@ const fetchTaskReport = async () => {
   taskReport.value = response.data;
 };
 
+const resetMonitorState = () => {
+  taskInfo.value = {
+    ...defaultTaskInfo,
+    id: currentTaskId.value,
+  };
+  taskReport.value = null;
+  taskRuns.value = [];
+  selectedTaskRunId.value = null;
+  dataSource.value = [];
+  metrics.value = { ...defaultMetric };
+  metricHistory.value = [];
+  taskRunning.value = false;
+  wsConnected.value = false;
+  lastReportRefreshAt = 0;
+};
+
 const refreshReportIfNeeded = async (force = false) => {
   const now = Date.now();
   if (!force && now - lastReportRefreshAt < 10000) {
@@ -412,6 +345,70 @@ const refreshMonitorData = async (showError = true) => {
   }
 };
 
+const stopFallbackPolling = () => {
+  if (fallbackActivationTimer) {
+    clearTimeout(fallbackActivationTimer);
+    fallbackActivationTimer = null;
+  }
+  if (fallbackStatusPollingTimer) {
+    clearInterval(fallbackStatusPollingTimer);
+    fallbackStatusPollingTimer = null;
+  }
+  if (fallbackDetailsPollingTimer) {
+    clearInterval(fallbackDetailsPollingTimer);
+    fallbackDetailsPollingTimer = null;
+  }
+};
+
+const pollRuntimeSnapshot = async () => {
+  if (!currentTaskId.value || wsConnected.value) {
+    return;
+  }
+
+  try {
+    await fetchTaskStatus();
+  } catch (error) {
+    console.error('Fallback status polling failed:', error);
+  }
+};
+
+const pollRuntimeDetails = async () => {
+  if (!currentTaskId.value || wsConnected.value) {
+    return;
+  }
+
+  try {
+    await fetchTaskRuns();
+    await refreshReportIfNeeded(true);
+  } catch (error) {
+    console.error('Fallback detail polling failed:', error);
+  }
+};
+
+const startFallbackPolling = () => {
+  if (fallbackActivationTimer || fallbackStatusPollingTimer || fallbackDetailsPollingTimer) {
+    return;
+  }
+
+  fallbackActivationTimer = setTimeout(() => {
+    fallbackActivationTimer = null;
+    if (wsConnected.value || !currentTaskId.value) {
+      return;
+    }
+
+    void pollRuntimeSnapshot();
+    void pollRuntimeDetails();
+
+    fallbackStatusPollingTimer = setInterval(() => {
+      void pollRuntimeSnapshot();
+    }, FALLBACK_STATUS_POLL_MS);
+
+    fallbackDetailsPollingTimer = setInterval(() => {
+      void pollRuntimeDetails();
+    }, FALLBACK_DETAILS_POLL_MS);
+  }, FALLBACK_ACTIVATION_DELAY_MS);
+};
+
 const connectRuntimeSocket = () => {
   const token = getToken();
   if (!currentTaskId.value || !token) {
@@ -435,7 +432,7 @@ const handleRuntimeSocketMessage = async (payload: TaskRuntimeSocketMessage) => 
 
     await fetchTaskStatus();
 
-    if (payload.event === 'started' || payload.event === 'finished' || payload.event === 'failed') {
+    if (payload.event === 'started' || payload.event === 'finished' || payload.event === 'failed' || payload.event === 'canceled') {
       await fetchTaskRuns();
       if (taskRuns.value.length) {
         selectedTaskRunId.value = taskRuns.value[0].id;
@@ -478,6 +475,10 @@ const handleStartTest = () => {
 };
 
 const handleStopTest = () => {
+  if (safeMetrics.value.state === 'stopping') {
+    message.warning("任务正在停止中");
+    return;
+  }
   if (!taskRunning.value) {
     message.warning("任务未在运行中");
     return;
@@ -521,6 +522,11 @@ const openFullReport = () => {
 onMounted(async () => {
   taskRuntimeSocket.setOnConnectionChange((connected) => {
     wsConnected.value = connected;
+    if (connected) {
+      stopFallbackPolling();
+      return;
+    }
+    startFallbackPolling();
   });
   taskRuntimeSocket.setOnMessage((payload) => {
     void handleRuntimeSocketMessage(payload);
@@ -536,241 +542,366 @@ watch(
   () => route.params.taskId,
   (value) => {
     currentTaskId.value = Number(value) || 0;
+    stopFallbackPolling();
     taskRuntimeSocket.disconnect();
+    resetMonitorState();
     connectRuntimeSocket();
+    void refreshMonitorData(false);
   }
 );
 
 onUnmounted(() => {
+  stopFallbackPolling();
   taskRuntimeSocket.disconnect();
 });
 </script>
 
 <template>
-  <div class="container-header">
-    <LogoComponent />
-    <div class="operation-container">
-      <div class="spacer"></div>
-      <div class="right-group">
-        <div class="header-menu">
-          <div class="menu">
-            <span class="menu-label">任务ID</span>
-            <span class="menu-value">{{ currentTaskId }}</span>
-          </div>
-          <div class="menu-divider"></div>
-          <div class="menu">
-            <span class="menu-label">任务名称</span>
-            <span class="menu-value">{{ safeTaskInfo.name }}</span>
-          </div>
-          <div class="menu-divider"></div>
-          <div class="menu">
-            <span class="menu-label">目标主机</span>
-            <span class="menu-value">{{ safeTaskInfo.host }}</span>
-          </div>
-          <div class="menu-divider"></div>
-          <div class="menu">
-            <span class="menu-label">状态</span>
-            <a-tag :color="getStatusColor(safeMetrics.state)">
-              {{ getStatusName(safeMetrics.state) }}
-            </a-tag>
-          </div>
-          <div class="menu-divider"></div>
-          <div class="menu">
-            <span class="menu-label">开始时间</span>
-            <span class="menu-value">{{ formatDateTime(safeMetrics.start_time) }}</span>
-          </div>
-          <div class="menu-divider"></div>
-          <div class="menu">
-            <span class="menu-label">运行时间</span>
-            <span class="menu-value">{{ safeMetrics.runtime }}</span>
-          </div>
-        </div>
-        <div class="header-user">
-          <a-button
-              type="primary"
-              @click="handleStartTest"
-              :loading="controlLoading"
-              :disabled="taskRunning"
-          >
-            开始压测
-          </a-button>
-          <a-button
-              type="primary"
-              danger
-              @click="handleStopTest"
-              :loading="controlLoading"
-              :disabled="!taskRunning"
-          >
-            停止
-          </a-button>
-          <warning-button class="warning-btn" @click="handlePauseTest" :disabled="!taskRunning">
-            暂停
-          </warning-button>
-          <a-button @click="handleResumeTest" :disabled="taskRunning">
-            恢复
-          </a-button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <MonitorControlBar
+    :taskId="currentTaskId"
+    :taskInfo="safeTaskInfo"
+    :metrics="safeMetrics"
+    :taskRunning="taskRunning"
+    :controlLoading="controlLoading"
+    @startTest="handleStartTest"
+    @stopTest="handleStopTest"
+    @pauseTest="handlePauseTest"
+    @resumeTest="handleResumeTest"
+  />
 
   <div class="main-container">
-    <section class="ai-panel">
-      <div class="ai-card">
-        <div class="ai-card-head">
-          <div>
-            <div class="ai-eyebrow">AI 实时分析</div>
-            <h2 class="ai-title">{{ aiInsight.title }}</h2>
-          </div>
-          <div class="ai-meta">
-            <a-tag :color="aiInsightToneMap[aiInsight.level].color">
-              {{ aiInsightToneMap[aiInsight.level].text }}
-            </a-tag>
-            <span class="ai-confidence">置信度 {{ Math.round(aiInsight.confidence * 100) }}%</span>
-          </div>
-        </div>
-
-        <p class="ai-summary">{{ aiInsight.summary }}</p>
-
-        <div class="ai-grid">
-          <div class="ai-section">
-            <div class="ai-section-title">判断依据</div>
-            <ul class="ai-list">
-              <li v-for="reason in aiInsight.reasons" :key="reason">{{ reason }}</li>
-            </ul>
-          </div>
-
-          <div class="ai-section">
-            <div class="ai-section-title">建议动作</div>
-            <ul class="ai-list">
-              <li v-for="action in aiInsight.actions" :key="action">{{ action }}</li>
-            </ul>
-          </div>
-        </div>
+    <!-- 加载状态 -->
+    <div v-if="loading" class="loading-overlay">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">正在加载监控数据...</p>
       </div>
+    </div>
 
-      <div class="endpoint-card">
-        <div class="endpoint-head">
-          <div class="ai-eyebrow">热点接口</div>
-          <div class="endpoint-subtitle">按失败速率和延迟综合排序</div>
-        </div>
-
-        <div class="endpoint-list">
-          <div class="endpoint-row" v-for="item in hotEndpoints" :key="item.name">
-            <div class="endpoint-main">
-              <div class="endpoint-name">
-                <span class="endpoint-method">{{ item.method }}</span>
-                <span>{{ item.name }}</span>
-              </div>
-              <div class="endpoint-hint">RPS {{ formatNumber(item.current_rps) }} / P95 {{ formatNumber(item.p95) }}ms</div>
-            </div>
-            <div class="endpoint-risk">
-              <span class="risk-value">{{ formatNumber(item.current_fail_per_sec) }}/s</span>
-              <span class="risk-label">失败速率</span>
-            </div>
-          </div>
-        </div>
+    <!-- 错误状态 -->
+    <div v-else-if="!currentTaskId" class="error-state">
+      <svg class="error-icon" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+      </svg>
+      <h2 class="error-title">任务未找到</h2>
+      <p class="error-message">请检查任务ID是否正确，或返回任务列表重新选择。</p>
+      <div class="error-actions">
+        <button class="ant-btn ant-btn-primary" @click="router.push('/tasks')">返回任务列表</button>
       </div>
+    </div>
 
-    </section>
+    <!-- 主要内容 -->
+    <template v-else>
+      <MonitorStatusDisplay :metrics="safeMetrics" />
 
-    <MonitorComponent
-        :dataSource="dataSource"
-        :metrics="safeMetrics"
-        :history="metricHistory"
-        :loading="loading"
-    />
+      <section class="ai-panel">
+        <MonitorAiPanel
+          :dataSource="dataSource"
+          :metrics="safeMetrics"
+          :history="metricHistory"
+        />
+
+        <MonitorHotEndpoints
+          :dataSource="dataSource"
+        />
+      </section>
+
+      <MonitorComponent
+          :dataSource="dataSource"
+          :metrics="safeMetrics"
+          :history="metricHistory"
+          :loading="loading"
+      />
+    </template>
   </div>
 </template>
 
 <style scoped>
-.container-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 10%;
-  height: 64px;
-  border-bottom: 1px solid #e8e8e8;
-  background: #fff;
-  width: 100%;
-  box-sizing: border-box;
-}
-
 .main-container {
   margin-top: 64px;
   flex: 1;
-  padding: 18px 10% 28px;
-  background:
-      radial-gradient(circle at top left, rgba(236, 244, 255, 0.95), transparent 32%),
-      linear-gradient(180deg, #f7f9fc 0%, #f2f5f9 100%);
-  overflow-y: auto;
+  padding: 24px 10% 32px;
   min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
 }
 
-.operation-container {
+.main-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 75% 75%, rgba(16, 185, 129, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.main-container > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 响应式断点优化 */
+@media (max-width: 1400px) {
+  .main-container {
+    padding: 20px 8% 28px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .main-container {
+    padding: 20px 6% 28px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .main-container {
+    padding: 16px 4% 24px;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-container {
+    padding: 12px 16px 20px;
+    margin-top: 72px;
+  }
+}
+
+@media (max-width: 480px) {
+  .main-container {
+    padding: 8px 12px 16px;
+  }
+}
+
+/* 加载状态优化 */
+.loading-overlay {
+  position: fixed;
+  top: 64px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  width: 100%;
-  gap: 16px;
+  justify-content: center;
+  z-index: 1000;
 }
 
-.right-group {
-  display: flex;
-  align-items: center;
-  gap: 24px;
+.loading-content {
+  text-align: center;
+  padding: 32px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
 }
 
-.header-menu {
-  display: flex;
-  align-items: center;
-  gap: 0 16px;
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f4f6;
+  border-top: 3px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
 }
 
-.menu {
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+  color: #6b7280;
+  font-size: 14px;
+  margin: 0;
+}
+
+/* 错误状态样式 */
+.error-state {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  height: 100%;
-  min-width: 80px;
+  min-height: 400px;
+  padding: 48px;
+  text-align: center;
 }
 
-.menu-label {
-  font-size: 12px;
-  color: #8c8c8c;
-  line-height: 1.2;
-  margin-bottom: 4px;
+.error-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 24px;
+  opacity: 0.6;
 }
 
-.menu-value {
-  font-size: 14px;
-  color: #262626;
-  font-weight: 500;
-  line-height: 1.2;
-  text-align: left;
-  word-break: break-word;
-  max-width: 220px;
+.error-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 8px;
 }
 
-.menu-divider {
-  margin: 0;
-  flex-shrink: 0;
-  border-width: 0 thin 0 0;
-  border-style: solid;
-  border-color: rgba(0, 0, 0, 0.12);
-  align-self: stretch;
-  height: auto;
+.error-message {
+  color: #6b7280;
+  margin-bottom: 24px;
+  max-width: 400px;
 }
 
-.header-user {
+.error-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.error-actions .ant-btn {
+  min-width: 100px;
+}
+
+/* 连接状态指示器 */
+.connection-status {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  z-index: 100;
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 8px 16px;
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.connection-status.connected {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.connection-status.disconnected {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.connection-status.connecting {
+  background: #fefce8;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.connection-status.disconnected .status-dot {
+  animation: none;
+}
+
+/* 性能监控指标 */
+.performance-metrics {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 100;
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  font-size: 11px;
+  color: #6b7280;
+  max-width: 200px;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.metric-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.metric-label {
+  font-weight: 500;
+}
+
+.metric-value {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* 深色模式支持 */
+@media (prefers-color-scheme: dark) {
+  .main-container {
+    /* background:
+        radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(16, 185, 129, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 40% 80%, rgba(245, 158, 11, 0.08) 0%, transparent 50%),
+        linear-gradient(135deg, #0f172a 0%, #1e293b 100%); */
+  }
+
+  .loading-content {
+    background: #1e293b;
+    color: #e2e8f0;
+  }
+
+  .error-title {
+    color: #f1f5f9;
+  }
+
+  .error-message {
+    color: #94a3b8;
+  }
+
+  .connection-status {
+    background: #1e293b;
+    color: #e2e8f0;
+  }
+
+  .performance-metrics {
+    background: #1e293b;
+    color: #94a3b8;
+  }
+
+  .metric-value {
+    color: #f1f5f9;
+  }
+}
+
+/* AI面板布局样式 */
+.ai-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1024px) {
+  .ai-panel {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
 }
 
 .ai-panel {
@@ -778,240 +909,6 @@ onUnmounted(() => {
   grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.95fr);
   gap: 16px;
   margin-bottom: 18px;
-}
-
-.quality-panel,
-.chart-strip,
-.report-overview {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.report-overview {
-  grid-template-columns: 1fr;
-}
-
-.ai-card,
-.endpoint-card,
-.quality-card {
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(20, 86, 163, 0.08);
-  border-radius: 18px;
-  box-shadow: 0 12px 32px rgba(32, 60, 96, 0.08);
-  backdrop-filter: blur(10px);
-}
-
-.ai-card {
-  padding: 20px 22px;
-}
-
-.endpoint-card {
-  padding: 18px;
-}
-
-.quality-card {
-  padding: 18px;
-}
-
-.report-overview-card {
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(20, 86, 163, 0.08);
-  border-radius: 18px;
-  box-shadow: 0 12px 32px rgba(32, 60, 96, 0.08);
-}
-
-.report-overview-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.report-overview-title {
-  margin-top: 4px;
-  font-size: 20px;
-  font-weight: 700;
-  color: #10233f;
-}
-
-.report-overview-subtitle {
-  margin-top: 6px;
-  color: #6a7b92;
-  font-size: 13px;
-}
-
-.report-overview-grid {
-  margin-top: 18px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.report-overview-item {
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: #f7faff;
-}
-
-.report-overview-item.wide {
-  grid-column: span 2;
-}
-
-.report-overview-label,
-.report-bottom-empty {
-  color: #73839a;
-}
-
-.report-overview-label {
-  display: block;
-  font-size: 12px;
-}
-
-.report-overview-value {
-  display: block;
-  margin-top: 6px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #183153;
-}
-
-.report-overview-value.danger {
-  color: #b42318;
-}
-
-.report-overview-bottom {
-  margin-top: 18px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.report-bottom-panel {
-  padding: 16px;
-  border-radius: 16px;
-  background: linear-gradient(180deg, #fbfdff 0%, #f5f9ff 100%);
-  border: 1px solid rgba(20, 86, 163, 0.08);
-}
-
-.report-bottom-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #183153;
-}
-
-.report-bottom-list {
-  margin-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.report-bottom-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 13px;
-  color: #4a5c76;
-}
-
-.report-bottom-row-stack {
-  align-items: flex-start;
-  flex-direction: column;
-}
-
-.report-bottom-strong {
-  color: #10233f;
-  font-weight: 600;
-}
-
-.report-bottom-empty {
-  margin-top: 12px;
-  font-size: 13px;
-}
-
-.ai-card-head,
-.endpoint-head,
-.endpoint-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.ai-eyebrow {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: #6b7a90;
-  text-transform: uppercase;
-}
-
-.ai-title {
-  margin: 6px 0 0;
-  font-size: 24px;
-  line-height: 1.2;
-  color: #10233f;
-}
-
-.ai-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  white-space: nowrap;
-}
-
-.ai-confidence {
-  font-size: 13px;
-  color: #5b6b80;
-}
-
-.ai-summary {
-  margin: 14px 0 18px;
-  font-size: 15px;
-  line-height: 1.7;
-  color: #31445f;
-}
-
-.ai-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.ai-section {
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, #f8fbff 0%, #f3f7fd 100%);
-}
-
-.ai-section-title {
-  margin-bottom: 10px;
-  font-size: 14px;
-  font-weight: 700;
-  color: #183153;
-}
-
-.ai-list {
-  margin: 0;
-  padding-left: 18px;
-  color: #4a5c76;
-  line-height: 1.7;
-}
-
-.endpoint-subtitle {
-  font-size: 13px;
-  color: #73839a;
-}
-
-.endpoint-list {
-  margin-top: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
 .quality-head {

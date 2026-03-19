@@ -11,6 +11,7 @@ from app.models.base import BaseModel
 class TaskRunStatusEnum(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
+    STOPPING = "stopping"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELED = "canceled"

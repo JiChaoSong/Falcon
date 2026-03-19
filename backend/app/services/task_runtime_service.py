@@ -45,7 +45,11 @@ class TaskRuntimeService:
         self.access_control.ensure_project_manage_access(task.project_id)
 
         latest_run = self._get_latest_task_run(task_id)
-        if not latest_run or latest_run.status != TaskRunStatusEnum.RUNNING:
+        if not latest_run:
+            raise ParamException("Task is not running.")
+        if latest_run.status == TaskRunStatusEnum.STOPPING:
+            raise ParamException("Task is already stopping.")
+        if latest_run.status != TaskRunStatusEnum.RUNNING:
             raise ParamException("Task is not running.")
 
         worker_task_id = str((latest_run.summary_json or {}).get("worker_task_id") or "")
@@ -62,10 +66,14 @@ class TaskRuntimeService:
             worker_addr=worker_addr,
         )
 
+        latest_run.status = TaskRunStatusEnum.STOPPING
+        task.status = TaskStatusEnum.STOPPING
+        self.db.commit()
+
         return {
             "task_id": task.id,
             "task_run_id": latest_run.id,
-            "status": TaskRunStatusEnum.CANCELED,
+            "status": TaskRunStatusEnum.STOPPING,
         }
 
     def status(self, task_id: int) -> dict[str, Any]:
@@ -303,7 +311,11 @@ class TaskRuntimeService:
                 TaskRun.is_deleted == false(),
             ).order_by(TaskRun.created_at.desc()).limit(1)
         ).scalars().first()
-        if latest_run and latest_run.status in {TaskRunStatusEnum.PENDING, TaskRunStatusEnum.RUNNING}:
+        if latest_run and latest_run.status in {
+            TaskRunStatusEnum.PENDING,
+            TaskRunStatusEnum.RUNNING,
+            TaskRunStatusEnum.STOPPING,
+        }:
             raise ParamException("Task already has an active run.")
 
         task_run = TaskRun(task_id=locked_task.id, status=TaskRunStatusEnum.PENDING, summary_json={})

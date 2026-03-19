@@ -59,11 +59,19 @@ class GrpcRuntimeEventService:
                 task_run.summary_json = merged_summary
 
             elif event_type == "snapshot":
-                task.status = TaskStatusEnum.RUNNING
+                task.status = (
+                    TaskStatusEnum.STOPPING
+                    if task.status == TaskStatusEnum.STOPPING
+                    else TaskStatusEnum.RUNNING
+                )
                 task.runtime_seconds = runtime_seconds
                 task.runtime = self._format_runtime(runtime_seconds)
                 task.stats = merged_summary
-                task_run.status = TaskRunStatusEnum.RUNNING
+                task_run.status = (
+                    TaskRunStatusEnum.STOPPING
+                    if task_run.status == TaskRunStatusEnum.STOPPING
+                    else TaskRunStatusEnum.RUNNING
+                )
                 task_run.runtime_seconds = runtime_seconds
                 task_run.summary_json = merged_summary
                 if metric:
