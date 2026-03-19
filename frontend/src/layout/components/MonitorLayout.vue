@@ -577,7 +577,7 @@ onUnmounted(() => {
           <div class="menu-divider"></div>
           <div class="menu">
             <span class="menu-label">开始时间</span>
-            <span class="menu-value">{{ safeMetrics.start_time }}</span>
+            <span class="menu-value">{{ formatDateTime(safeMetrics.start_time) }}</span>
           </div>
           <div class="menu-divider"></div>
           <div class="menu">
