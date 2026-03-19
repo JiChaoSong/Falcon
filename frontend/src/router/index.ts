@@ -30,8 +30,8 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
-        path: 'csse',
-        name: 'Csse',
+        path: 'case',
+        name: 'case',
         component: () => import('@/views/case/index.vue'),
         meta: {
           title: '用例管理',

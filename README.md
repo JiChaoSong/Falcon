@@ -207,8 +207,8 @@ Falcon/
 - ![dashboard.png](https://github.com/JiChaoSong/Falcon/blob/main/docs/assets/dashboard.png?raw=true)
 - `/project`：项目管理
 - ![project.png](https://github.com/JiChaoSong/Falcon/blob/main/docs/assets/project.png?raw=true)
-- `/csse`：用例管理
-- ![csse.png](https://github.com/JiChaoSong/Falcon/blob/main/docs/assets/csse.png?raw=true)
+- `/case`：用例管理
+- ![case.png](https://github.com/JiChaoSong/Falcon/blob/main/docs/assets/case.png?raw=true)
 - `/scenario`：场景管理
 - ![scenario.png](https://github.com/JiChaoSong/Falcon/blob/main/docs/assets/scenario.png?raw=true)
 - `/task`：任务管理
