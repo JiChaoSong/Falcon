@@ -70,11 +70,11 @@ defineEmits<{
 }>();
 
 const getStatusName = (state?: SystemState): string => {
-  return STATE_NAMES[state || "missing"] || "运行异常";
+  return STATE_NAMES[state || "unknown"] || "状态未知";
 };
 
 const getStatusColor = (state?: SystemState): string => {
-  return STATE_COLORS[state || "missing"] || "default";
+  return STATE_COLORS[state || "unknown"] || "default";
 };
 </script>
 

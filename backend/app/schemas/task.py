@@ -202,7 +202,7 @@ class TaskRuntimeStatusData(BaseModel):
     failure_samples: List[Any] = []
     stats: List[Any] = []
     history: List[TaskMetricPoint] = []
-    worker_snapshot: dict[str, Any] = {}
+    worker_snapshot: dict[str, Any] | None = None
 
 
 class TaskRuntimeStatusResponse(BaseResponse):
@@ -269,7 +269,7 @@ class TaskReportData(BaseModel):
     riskiest_endpoint: TaskReportEndpoint | None = None
     stats: List[Any] = []
     history: List[TaskMetricPoint] = []
-    worker_snapshot: dict[str, Any] = {}
+    worker_snapshot: dict[str, Any] | None = None
 
 
 class TaskReportResponse(BaseResponse):

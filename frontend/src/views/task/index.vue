@@ -146,7 +146,7 @@
           <template v-if="column.key === 'actions'">
             <Space size="small">
               <Tooltip title="预览">
-                <Button type="link" size="small" @click="previewTask(record.id)">
+                <Button type="link" size="small" @click="router.push(`/task/detail/${record.id}`)">
                   <EyeOutlined />
                 </Button>
               </Tooltip>

@@ -11,7 +11,7 @@ const defaultMetric: Metrics = {
   total_rps: 0,
   total_fail_per_sec: 0,
   fail_ratio: 0,
-  state: "missing" as SystemState,
+  state: "unknown" as SystemState,
   user_count: 0,
   start_time: "--",
   runtime: "--",
@@ -59,19 +59,20 @@ const buildRuntime = (seconds: number) => {
 
 const mapTaskStatusToSystemState = (status?: string): SystemState => {
   switch ((status || "").toLowerCase()) {
+    case "pending":
+      return "pending";
     case "running":
       return "running";
     case "stopping":
       return "stopping";
-    case "pending":
-      return "ready";
     case "completed":
-    case "canceled":
-      return "stopped";
+      return "completed";
     case "failed":
-      return "missing";
+      return "failed";
+    case "canceled":
+      return "canceled";
     default:
-      return "ready";
+      return "unknown";
   }
 };
 
