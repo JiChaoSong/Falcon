@@ -1,89 +1,85 @@
 <template>
   <div class="container-header">
     <LogoComponent />
-    <div class="operation-container">
-      <div class="spacer"></div>
-      <div class="right-group">
-        <div class="header-menu">
-          <div class="menu">
-            <span class="menu-label">任务ID</span>
-            <span class="menu-value">{{ taskId }}</span>
-          </div>
-          <div class="menu-divider"></div>
-          <div class="menu">
-            <span class="menu-label">任务名称</span>
-            <span class="menu-value">{{ taskInfo?.name || '未命名任务' }}</span>
-          </div>
-          <div class="menu-divider"></div>
-          <div class="menu">
-            <span class="menu-label">目标主机</span>
-            <span class="menu-value">{{ taskInfo?.host || '-' }}</span>
-          </div>
-          <div class="menu-divider"></div>
-          <div class="menu">
-            <span class="menu-label">状态</span>
+
+    <div class="header-content">
+      <div class="header-main">
+        <div class="header-eyebrow">任务监控</div>
+        <div class="header-title-row">
+          <h1 class="header-title">{{ taskInfo?.name || "未命名任务" }}</h1>
+          <div class="status-group">
+            <span class="ws-pill" :data-connected="wsConnected ? 'yes' : 'no'">
+              <span class="ws-dot"></span>
+              {{ wsConnected ? "实时连接" : "轮询兜底" }}
+            </span>
             <a-tag :color="getStatusColor(metrics?.state)">
               {{ getStatusName(metrics?.state) }}
             </a-tag>
           </div>
-          <div class="menu-divider"></div>
-          <div class="menu">
-            <span class="menu-label">开始时间</span>
-            <span class="menu-value">{{ formatDateTime(metrics?.start_time) }}</span>
+        </div>
+
+        <div class="meta-list">
+          <div class="meta-item">
+            <span class="meta-label">任务 ID</span>
+            <span class="meta-value">#{{ taskId }}</span>
           </div>
-          <div class="menu-divider"></div>
-          <div class="menu">
-            <span class="menu-label">运行时间</span>
-            <span class="menu-value">{{ metrics?.runtime || '--' }}</span>
+          <div class="meta-item">
+            <span class="meta-label">目标地址</span>
+            <span class="meta-value">{{ taskInfo?.host || "-" }}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">开始时间</span>
+            <span class="meta-value">{{ formatDateTime(metrics?.start_time) }}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">运行时长</span>
+            <span class="meta-value">{{ metrics?.runtime || "--" }}</span>
           </div>
         </div>
-        <div class="header-user">
-          <a-button
-              type="primary"
-              @click="$emit('startTest')"
-              :loading="controlLoading"
-              :disabled="taskRunning"
-          >
-            开始压测
-          </a-button>
-          <a-button
-              type="primary"
-              danger
-              @click="$emit('stopTest')"
-              :loading="controlLoading"
-              :disabled="!taskRunning || metrics?.state === 'stopping'"
-          >
-            停止
-          </a-button>
-          <warning-button class="warning-btn" @click="$emit('pauseTest')" :disabled="!taskRunning || metrics?.state === 'stopping'">
-            暂停
-          </warning-button>
-          <a-button @click="$emit('resumeTest')" :disabled="taskRunning">
-            恢复
-          </a-button>
-        </div>
+      </div>
+
+      <div class="header-actions">
+        <a-button type="primary" class="action-btn" :loading="controlLoading" :disabled="taskRunning" @click="$emit('startTest')">
+          开始
+        </a-button>
+        <a-button
+          type="primary"
+          danger
+          class="action-btn"
+          :loading="controlLoading"
+          :disabled="!taskRunning || metrics?.state === 'stopping'"
+          @click="$emit('stopTest')"
+        >
+          停止
+        </a-button>
+        <WarningButton class="action-btn warning-btn" :disabled="!taskRunning || metrics?.state === 'stopping'" @click="$emit('pauseTest')">
+          暂停
+        </WarningButton>
+        <a-button class="action-btn ghost-btn" :disabled="taskRunning" @click="$emit('resumeTest')">
+          恢复
+        </a-button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
 import LogoComponent from "@/layout/components/LogoComponent.vue";
 import WarningButton from "@/components/WarningButton.vue";
 import { formatDateTime } from "@/utils/tools";
-import { Metrics, STATE_COLORS, STATE_NAMES, SystemState } from "@/layout/type.ts";
+import { STATE_COLORS, STATE_NAMES, type Metrics, type SystemState } from "@/layout/type.ts";
 import type { TaskInfo } from "@/types/task";
 
-const props = defineProps<{
+defineProps<{
   taskId: number;
   taskInfo: TaskInfo | null;
   metrics: Metrics | null;
   taskRunning: boolean;
   controlLoading: boolean;
+  wsConnected: boolean;
 }>();
 
-const emit = defineEmits<{
+defineEmits<{
   startTest: [];
   stopTest: [];
   pauseTest: [];
@@ -91,11 +87,11 @@ const emit = defineEmits<{
 }>();
 
 const getStatusName = (state?: SystemState): string => {
-  return STATE_NAMES[state || 'missing'] || "未知状态";
+  return STATE_NAMES[state || "missing"] || "未知";
 };
 
 const getStatusColor = (state?: SystemState): string => {
-  return STATE_COLORS[state || 'missing'] || "gray";
+  return STATE_COLORS[state || "missing"] || "default";
 };
 </script>
 
@@ -107,106 +103,179 @@ const getStatusColor = (state?: SystemState): string => {
   z-index: 1000;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 10%;
-  height: 64px;
-  border-bottom: 1px solid #e8e8e8;
-  background: #fff;
   width: 100%;
+  min-height: 88px;
+  padding: 14px 10%;
   box-sizing: border-box;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.84);
+  backdrop-filter: blur(18px);
 }
 
-.operation-container {
+.header-content {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 20px;
   flex: 1;
   margin-left: 24px;
 }
 
-.spacer {
+.header-main {
   flex: 1;
+  min-width: 0;
 }
 
-.right-group {
+.header-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.header-title-row {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 12px;
+  margin-top: 6px;
 }
 
-.header-menu {
+.header-title {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 800;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-group {
   display: flex;
-  align-items: center;
-  gap: 0;
-  font-size: 13px;
-}
-
-.menu {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.menu-label {
-  color: #666;
-  font-weight: 500;
-}
-
-.menu-value {
-  color: #1f2937;
-  font-weight: 600;
-}
-
-.menu-divider {
-  width: 1px;
-  height: 16px;
-  background: #e8e8e8;
-  margin: 0 12px;
-}
-
-.header-user {
-  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
 
-.warning-btn {
-  margin-left: 4px;
+.ws-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.05);
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ws-pill[data-connected="yes"] {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.ws-pill[data-connected="no"] {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+
+.ws-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.42);
+}
+
+.meta-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.meta-label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.meta-value {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.action-btn {
+  min-width: 88px;
+  height: 40px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.ghost-btn {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(148, 163, 184, 0.24);
 }
 
 @media (max-width: 1200px) {
   .container-header {
-    padding: 0 5%;
+    padding: 14px 5%;
   }
 
-  .header-menu {
-    display: none;
+  .header-title {
+    font-size: 24px;
   }
 }
 
 @media (max-width: 768px) {
   .container-header {
-    padding: 0 16px;
-    height: auto;
+    min-height: auto;
+    padding: 16px;
+  }
+
+  .header-content {
+    margin-left: 0;
     flex-direction: column;
     align-items: stretch;
-    gap: 16px;
-    padding-top: 16px;
-    padding-bottom: 16px;
   }
 
-  .operation-container {
-    margin-left: 0;
-  }
-
-  .right-group {
+  .header-title-row {
     flex-direction: column;
-    gap: 12px;
-    width: 100%;
+    align-items: flex-start;
   }
 
-  .header-user {
-    justify-content: center;
-    flex-wrap: wrap;
+  .header-title {
+    white-space: normal;
+  }
+
+  .header-actions {
+    justify-content: stretch;
+  }
+
+  .action-btn {
+    flex: 1 1 calc(50% - 6px);
   }
 }
 </style>

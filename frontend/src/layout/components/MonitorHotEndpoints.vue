@@ -1,18 +1,22 @@
 <template>
   <div class="endpoint-card">
     <div class="endpoint-head">
-      <div class="ai-eyebrow">热点接口</div>
-      <div class="endpoint-subtitle">按失败速率和延迟综合排序</div>
+      <div class="endpoint-eyebrow">热点接口</div>
+      <div class="endpoint-title">热点接口</div>
+      <div class="endpoint-subtitle">按失败压力和延迟权重排序，优先显示最值得排查的路径。</div>
     </div>
 
-    <div class="endpoint-list">
-      <div class="endpoint-row" v-for="item in hotEndpoints" :key="item.name">
+    <div v-if="endpoints.length" class="endpoint-list">
+      <div v-for="(item, index) in endpoints" :key="item.name" class="endpoint-row">
+        <div class="endpoint-rank">0{{ index + 1 }}</div>
         <div class="endpoint-main">
           <div class="endpoint-name">
             <span class="endpoint-method">{{ item.method }}</span>
-            <span>{{ item.name }}</span>
+            <span class="endpoint-path">{{ item.name }}</span>
           </div>
-          <div class="endpoint-hint">RPS {{ formatNumber(item.current_rps) }} / P95 {{ formatNumber(item.p95) }}ms</div>
+          <div class="endpoint-hint">
+            RPS {{ formatNumber(item.current_rps) }} | P95 {{ formatNumber(item.p95) }} ms | Avg {{ formatNumber(item.avg_response_time) }} ms
+          </div>
         </div>
         <div class="endpoint-risk">
           <span class="risk-value">{{ formatNumber(item.current_fail_per_sec) }}/s</span>
@@ -20,131 +24,159 @@
         </div>
       </div>
     </div>
+
+    <div v-else class="endpoint-empty">
+      压测开始并产生接口级明细后，这里会展示当前最热的高风险接口。
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { formatNumber } from '@/utils/tools';
-import { Stats } from "@/layout/type.ts";
+import { formatNumber } from "@/utils/tools";
+import type { HotEndpointItem } from "@/layout/composables/useTaskMonitorViewModel";
 
-const props = defineProps<{
-  dataSource: Stats[];
+defineProps<{
+  endpoints: HotEndpointItem[];
 }>();
-
-const hotEndpoints = computed(() => {
-  return [...props.dataSource]
-      .sort((a, b) => {
-        const aScore = a.current_fail_per_sec * 100 + a.avg_response_time;
-        const bScore = b.current_fail_per_sec * 100 + b.avg_response_time;
-        return bScore - aScore;
-      })
-      .slice(0, 3)
-      .map((item) => ({
-        ...item,
-        p95: item["response_time_percentile_0.95"] ?? 0
-      }));
-});
 </script>
 
 <style scoped>
 .endpoint-card {
-  background: #fff;
-  border-radius: 12px;
   padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 22px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.94) 100%);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
 }
 
 .endpoint-head {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
-.ai-eyebrow {
-  font-size: 12px;
-  color: #666;
+.endpoint-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  color: #64748b;
+}
+
+.endpoint-title {
+  margin-top: 6px;
+  font-size: 20px;
+  line-height: 1.15;
+  font-weight: 800;
+  color: #0f172a;
 }
 
 .endpoint-subtitle {
+  margin-top: 6px;
   font-size: 13px;
-  color: #6b7280;
+  color: #64748b;
 }
 
 .endpoint-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .endpoint-row {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
   align-items: center;
-  padding: 12px 16px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.endpoint-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .endpoint-main {
-  flex: 1;
+  min-width: 0;
 }
 
 .endpoint-name {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #1f2937;
-  margin-bottom: 4px;
 }
 
 .endpoint-method {
-  background: #3b82f6;
-  color: white;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
+}
+
+.endpoint-path {
+  word-break: break-word;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.endpoint-hint,
+.risk-label,
+.endpoint-empty {
+  color: #64748b;
 }
 
 .endpoint-hint {
+  margin-top: 6px;
   font-size: 12px;
-  color: #6b7280;
 }
 
 .endpoint-risk {
-  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 .risk-value {
-  display: block;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 800;
   color: #dc2626;
-  margin-bottom: 2px;
 }
 
 .risk-label {
+  margin-top: 3px;
   font-size: 11px;
-  color: #6b7280;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+}
+
+.endpoint-empty {
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.82);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 @media (max-width: 768px) {
   .endpoint-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
+    grid-template-columns: 1fr;
   }
 
   .endpoint-risk {
-    text-align: left;
+    align-items: flex-start;
   }
 }
 </style>
