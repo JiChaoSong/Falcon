@@ -80,6 +80,11 @@ service.interceptors.response.use((response:AxiosResponse) => {
         void redirectToLogin()
         return Promise.reject(error)
     }
+    if (status == 500) {
+        message.error(responseMessage || '网络连接错误', 3)
+        void redirectToLogin()
+        return Promise.reject(error)
+    }
 
     message.error(responseMessage || error?.message || "请求失败");
     return Promise.reject(error);

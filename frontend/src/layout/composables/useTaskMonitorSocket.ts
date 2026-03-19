@@ -17,6 +17,7 @@ const FALLBACK_DETAILS_POLL_MS = 15000;
 
 export const useTaskMonitorSocket = (options: MonitorSocketOptions) => {
   const wsConnected = ref(false);
+  let suppressFallbackOnDisconnect = false;
 
   let fallbackActivationTimer: ReturnType<typeof setTimeout> | null = null;
   let fallbackStatusPollingTimer: ReturnType<typeof setInterval> | null = null;
@@ -92,10 +93,12 @@ export const useTaskMonitorSocket = (options: MonitorSocketOptions) => {
       return;
     }
 
+    suppressFallbackOnDisconnect = false;
     taskRuntimeSocket.connect(options.taskId.value, token);
   };
 
   const disconnectRuntimeSocket = () => {
+    suppressFallbackOnDisconnect = true;
     stopFallbackPolling();
     taskRuntimeSocket.disconnect();
     wsConnected.value = false;
@@ -133,7 +136,11 @@ export const useTaskMonitorSocket = (options: MonitorSocketOptions) => {
   taskRuntimeSocket.setOnConnectionChange((connected) => {
     wsConnected.value = connected;
     if (connected) {
+      suppressFallbackOnDisconnect = false;
       stopFallbackPolling();
+      return;
+    }
+    if (suppressFallbackOnDisconnect) {
       return;
     }
     startFallbackPolling();
