@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     HOST: str = "127.0.0.1"
     PORT: int = 8008
 
-    DATABASE_URL: str = "mysql+pymysql://root:123456@localhost:3306/perflocust"
+    DATABASE_URL: str = "mysql+pymysql://root:123456@localhost:3306/falcon"
 
     POOL_PRE_PING: bool = True
     POOL_SIZE: int = 10
