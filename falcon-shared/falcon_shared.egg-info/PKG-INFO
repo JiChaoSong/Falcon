@@ -1,0 +1,19 @@
+Metadata-Version: 2.4
+Name: falcon-shared
+Version: 0.1.0
+Summary: Shared contracts and runtime enums for Falcon master and worker
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: pydantic<3,>=2.12
+Requires-Dist: grpcio>=1.78.0
+
+# falcon-shared
+
+Shared runtime contracts for Falcon master and worker.
+
+Current contents:
+
+- `falcon_shared.runtime_enums`
+- `falcon_shared.task_contracts`
+
+This directory is the target shared layer for future extraction from the monorepo `backend/app/shared`.
