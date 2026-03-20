@@ -111,7 +111,7 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   participant U as User
-  participant FE as falcon-ui
+  participant FE as Falcon-ui
   participant BE as Falcon Master
   participant WK as Falcon Worker
   participant TS as Target Service
@@ -132,7 +132,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   participant U as User
-  participant FE as falcon-ui
+  participant FE as Falcon-ui
   participant BE as Falcon Master
   participant DB as MySQL
 
