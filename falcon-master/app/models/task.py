@@ -6,7 +6,7 @@ from sqlalchemy.dialects.mysql import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModel
-from falcon_shared.runtime_enums import TaskExecutionStrategyEnum, TaskStatusEnum
+from falcon_shared.runtime_enums import TaskCompletionPolicyEnum, TaskExecutionStrategyEnum, TaskStatusEnum
 
 
 class Tasks(BaseModel):
@@ -32,6 +32,12 @@ class Tasks(BaseModel):
         default=TaskExecutionStrategyEnum.SEQUENTIAL,
         nullable=False,
         comment="execution strategy",
+    )
+    completion_policy: Mapped[TaskCompletionPolicyEnum] = mapped_column(
+        SQLAlchemyEnum(TaskCompletionPolicyEnum, name="task_completion_policy"),
+        default=TaskCompletionPolicyEnum.GRACEFUL,
+        nullable=False,
+        comment="completion policy",
     )
     finished_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),

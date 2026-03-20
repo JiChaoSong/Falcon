@@ -34,6 +34,7 @@ export interface TaskInfo extends BaseEntity {
   spawn_rate: number
   duration: number | null
   execution_strategy: string
+  completion_policy: string
   status: string
   start_time: string | null
   runtime_seconds: number | null
@@ -72,6 +73,7 @@ export interface TaskCreate {
   spawn_rate: number
   duration: number
   execution_strategy: string
+  completion_policy: string
   scenarios: TaskScenarioBind[]
 }
 
@@ -88,6 +90,7 @@ export interface TaskUpdate {
   spawn_rate?: number
   duration?: number | null
   execution_strategy?: string
+  completion_policy?: string
   status?: string
   scenarios?: TaskScenarioBind[]
 }
@@ -209,6 +212,7 @@ export interface TaskReportData {
   owner: string
   host: string
   execution_strategy: string
+  completion_policy: string
   scenario_count: number
   status: string
   started_at: string | null

@@ -30,6 +30,7 @@ class GrpcWorkerDispatcherService:
             spawn_rate=int(task.spawn_rate or 0),
             duration=int(task.duration or 0),
             execution_strategy=getattr(task.execution_strategy, "value", str(task.execution_strategy)),
+            completion_policy=getattr(task.completion_policy, "value", str(task.completion_policy)),
             execution_plan=self._load_execution_plan(task.id),
             control_plane_addr=f"{settings.GRPC_MASTER_HOST}:{settings.GRPC_MASTER_PORT}",
         )
@@ -49,6 +50,7 @@ class GrpcWorkerDispatcherService:
                         spawn_rate=task_definition.spawn_rate,
                         duration=task_definition.duration,
                         execution_strategy=task_definition.execution_strategy,
+                        completion_policy=task_definition.completion_policy,
                         execution_plan_json=task_definition.execution_plan_json(),
                         control_plane_addr=task_definition.control_plane_addr,
                     ),

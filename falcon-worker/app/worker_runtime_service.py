@@ -32,6 +32,7 @@ class WorkerRuntimeService:
         spawn_rate: int,
         duration: int,
         execution_strategy: str,
+        completion_policy: str,
         execution_plan_json: str,
         control_plane_addr: str,
     ) -> tuple[bool, str]:
@@ -51,6 +52,7 @@ class WorkerRuntimeService:
                     "spawn_rate": spawn_rate,
                     "duration": duration,
                     "execution_strategy": execution_strategy,
+                    "completion_policy": completion_policy,
                     "execution_plan": WorkerTaskDefinition.load_execution_plan_json(execution_plan_json),
                     "control_plane_addr": control_plane_addr,
                 },
@@ -91,6 +93,7 @@ class WorkerRuntimeService:
         spawn_rate: int,
         duration: int,
         execution_strategy: str,
+        completion_policy: str,
         execution_plan: list[WorkerExecutionPlanItem],
         control_plane_addr: str,
     ) -> None:
@@ -111,6 +114,7 @@ class WorkerRuntimeService:
                     spawn_rate=spawn_rate,
                     duration=duration,
                     execution_strategy=execution_strategy,
+                    completion_policy=completion_policy,
                     execution_plan=execution_plan,
                     reporter=reporter,
                 )

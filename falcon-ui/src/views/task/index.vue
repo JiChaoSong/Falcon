@@ -301,6 +301,20 @@
           </Select>
         </Form.Item>
 
+        <Form.Item label="到时结束策略">
+          <Select v-model:value="state.formData.completion_policy">
+            <Select.Option value="graceful">自然收尾</Select.Option>
+            <Select.Option value="force">强制结束</Select.Option>
+          </Select>
+          <div class="config-tips compact-tips">
+            <span>
+              {{ state.formData.completion_policy === 'force'
+                ? '达到计划时长后会立即终止任务，未完成请求可能被中断。'
+                : '达到计划时长后会停止继续加压，并等待已创建用户完成当前执行。' }}
+            </span>
+          </div>
+        </Form.Item>
+
         <Form.Item label="任务描述">
           <Input.TextArea
             v-model:value="state.formData.description"
@@ -468,6 +482,9 @@
         <Descriptions.Item label="执行策略">
           {{ executionStrategyMap[state.previewData.execution_strategy] || state.previewData.execution_strategy }}
         </Descriptions.Item>
+        <Descriptions.Item label="到时结束">
+          {{ completionPolicyMap[state.previewData.completion_policy] || state.previewData.completion_policy || '-' }}
+        </Descriptions.Item>
         <Descriptions.Item label="开始时间">{{ formatDateTime(state.previewData.start_time) }}</Descriptions.Item>
         <Descriptions.Item label="结束时间">{{ formatDateTime(state.previewData.finished_at) }}</Descriptions.Item>
         <Descriptions.Item label="任务描述" :span="2">
@@ -575,6 +592,7 @@ const createDefaultFormData = () => ({
   spawn_rate: 2,
   duration: 60,
   execution_strategy: 'sequential',
+  completion_policy: 'graceful',
   status: 'pending',
   scenarios: [createDefaultScenarioRow()],
 })
@@ -618,6 +636,11 @@ const statusMap: Record<string, { text: string; color: string }> = {
 const executionStrategyMap: Record<string, string> = {
   sequential: '顺序执行',
   weighted: '按权重分配',
+}
+
+const completionPolicyMap: Record<string, string> = {
+  graceful: '自然收尾',
+  force: '强制结束',
 }
 
 const selectedScenarioCount = computed(
@@ -666,6 +689,7 @@ const getScenarioDisplayName = (scenarioId?: number) => {
 const normalizeTask = (task: TaskInfo): TaskInfo => ({
   ...task,
   status: task.status?.toLowerCase() || 'pending',
+  completion_policy: task.completion_policy?.toLowerCase() || 'graceful',
   scenarios: Array.isArray(task.scenarios) ? task.scenarios : [],
 })
 
@@ -826,6 +850,7 @@ const showEditModal = async (taskId: number) => {
       spawn_rate: task.spawn_rate,
       duration: task.duration || 60,
       execution_strategy: task.execution_strategy || 'sequential',
+      completion_policy: task.completion_policy || 'graceful',
       status: task.status,
       scenarios: task.scenarios.length
         ? task.scenarios.map(item => ({ ...item, row_key: generateUUID() }))
@@ -904,6 +929,7 @@ const handleModalOk = async () => {
       spawn_rate: state.formData.spawn_rate,
       duration: state.formData.duration,
       execution_strategy: state.formData.execution_strategy,
+      completion_policy: state.formData.completion_policy,
       scenarios: buildScenariosPayload(),
     }
 
@@ -1133,6 +1159,11 @@ onMounted(async () => {
   font-size: 12px;
   line-height: 1.7;
   color: #52637a;
+}
+
+.compact-tips {
+  margin-top: 8px;
+  margin-bottom: 0;
 }
 
 .scenario-list {

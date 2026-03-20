@@ -20,6 +20,7 @@ class WorkerTaskDefinition(BaseModel):
     spawn_rate: int
     duration: int
     execution_strategy: str
+    completion_policy: str = "graceful"
     execution_plan: list[WorkerExecutionPlanItem] = Field(default_factory=list)
     control_plane_addr: str
 
