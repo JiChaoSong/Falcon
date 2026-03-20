@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: falcon-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: falcon
+      MYSQL_USER: falcon
+      MYSQL_PASSWORD: falcon
+    ports:
+      - "3306:3306"
+    volumes:
+      - falcon_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  falcon-master:
+    build:
+      context: ..
+      dockerfile: deploy/falcon-master.Dockerfile
+    container_name: falcon-master
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    env_file:
+      - ./.env.master
+    ports:
+      - "8008:8008"
+      - "50051:50051"
+    volumes:
+      - ../falcon-master/logs:/srv/falcon-master/logs
+
+  falcon-worker:
+    build:
+      context: ..
+      dockerfile: deploy/falcon-worker.Dockerfile
+    container_name: falcon-worker
+    restart: unless-stopped
+    depends_on:
+      - falcon-master
+    env_file:
+      - ./.env.worker
+    ports:
+      - "50061:50061"
+    volumes:
+      - ../falcon-worker/logs:/srv/falcon-worker/logs
+
+  falcon-ui:
+    build:
+      context: ..
+      dockerfile: deploy/falcon-ui.Dockerfile
+    container_name: falcon-ui
+    restart: unless-stopped
+    depends_on:
+      - falcon-master
+    ports:
+      - "8080:80"
+
+volumes:
+  falcon_mysql_data:
