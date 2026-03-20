@@ -765,7 +765,7 @@ type ImportPreviewItem = CaseImportItem & {
 }
 
 const createDefaultHeaders = () => [
-  { row_key: crypto.randomUUID(), name: 'User-Agent', value: 'PerfLocust/1.0' },
+  { row_key: crypto.randomUUID(), name: 'User-Agent', value: 'Falcon/1.0' },
   { row_key: crypto.randomUUID(), name: 'Content-Type', value: 'application/json' },
 ]
 
