@@ -28,8 +28,9 @@ message TaskDefinition {
   int32 spawn_rate = 6;
   int32 duration = 7;
   string execution_strategy = 8;
-  string execution_plan_json = 9;
-  string control_plane_addr = 10;
+  string completion_policy = 9;
+  string execution_plan_json = 10;
+  string control_plane_addr = 11;
 }
 
 message StartTaskRequest {

@@ -77,12 +77,10 @@ service.interceptors.response.use((response:AxiosResponse) => {
 
     if (status === 401 || status === 403) {
         message.error(responseMessage || "登录信息失效，请重新登录！", 3)
-        void redirectToLogin()
         return Promise.reject(error)
     }
     if (status == 500) {
         message.error(responseMessage || '网络连接错误', 3)
-        void redirectToLogin()
         return Promise.reject(error)
     }
 

@@ -5,7 +5,12 @@ from pydantic import BaseModel, field_validator
 
 from app.schemas.base import BaseSchema, BaseListSchema, BaseQuery
 from app.schemas.response import BaseResponse
-from falcon_shared.runtime_enums import TaskExecutionStrategyEnum, TaskRunStatusEnum, TaskStatusEnum
+from falcon_shared.runtime_enums import (
+    TaskCompletionPolicyEnum,
+    TaskExecutionStrategyEnum,
+    TaskRunStatusEnum,
+    TaskStatusEnum,
+)
 
 
 # =============================
@@ -48,11 +53,19 @@ class TaskCreate(BaseModel):
     spawn_rate: int
     duration: int
     execution_strategy: TaskExecutionStrategyEnum = TaskExecutionStrategyEnum.SEQUENTIAL
+    completion_policy: TaskCompletionPolicyEnum = TaskCompletionPolicyEnum.GRACEFUL
     scenarios: List[TaskScenarioBind]
 
     @field_validator("execution_strategy", mode="before")
     @classmethod
     def normalize_execution_strategy(cls, value):
+        if isinstance(value, str):
+            return value.lower()
+        return value
+
+    @field_validator("completion_policy", mode="before")
+    @classmethod
+    def normalize_completion_policy(cls, value):
         if isinstance(value, str):
             return value.lower()
         return value
@@ -70,6 +83,7 @@ class TaskUpdate(BaseModel):
     spawn_rate: int | None = None
     duration: int  | None = None
     execution_strategy: TaskExecutionStrategyEnum | None = None
+    completion_policy: TaskCompletionPolicyEnum | None = None
     scenarios: Optional[List[TaskScenarioBind]] = None
     status: TaskStatusEnum | None = None
 
@@ -83,6 +97,13 @@ class TaskUpdate(BaseModel):
     @field_validator("execution_strategy", mode="before")
     @classmethod
     def normalize_execution_strategy(cls, value):
+        if isinstance(value, str):
+            return value.lower()
+        return value
+
+    @field_validator("completion_policy", mode="before")
+    @classmethod
+    def normalize_completion_policy(cls, value):
         if isinstance(value, str):
             return value.lower()
         return value
@@ -148,6 +169,7 @@ class TaskInfo(BaseSchema):
     spawn_rate: int
     duration: int  | None = None
     execution_strategy: TaskExecutionStrategyEnum = TaskExecutionStrategyEnum.SEQUENTIAL
+    completion_policy: TaskCompletionPolicyEnum = TaskCompletionPolicyEnum.GRACEFUL
     status: TaskStatusEnum
     start_time: datetime | None = None
     runtime_seconds: int | None = None
@@ -249,6 +271,7 @@ class TaskReportData(BaseModel):
     owner: str
     host: str
     execution_strategy: TaskExecutionStrategyEnum
+    completion_policy: TaskCompletionPolicyEnum = TaskCompletionPolicyEnum.GRACEFUL
     scenario_count: int
     status: TaskRunStatusEnum | TaskStatusEnum
     started_at: datetime | None = None

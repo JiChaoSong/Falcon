@@ -7,7 +7,7 @@ from app.engine_v2.metrics.local_aggregator import LocalMetricsAggregator
 from app.engine_v2.registry.run_registry import TaskRunControl
 from app.engine_v2.runtime.context import RuntimeContext
 from app.engine_v2.runtime.scenario_runner import ScenarioRunner
-from falcon_shared.runtime_enums import TaskExecutionStrategyEnum, TaskRunStatusEnum
+from falcon_shared.runtime_enums import TaskCompletionPolicyEnum, TaskExecutionStrategyEnum, TaskRunStatusEnum
 from falcon_shared.task_contracts import WorkerExecutionPlanItem
 from app.control_plane_reporter import ControlPlaneReporter
 
@@ -26,6 +26,7 @@ class GrpcTaskRunner:
         spawn_rate: int,
         duration: int,
         execution_strategy: str,
+        completion_policy: str,
         execution_plan: list[WorkerExecutionPlanItem],
         reporter: ControlPlaneReporter,
     ) -> None:
@@ -45,6 +46,8 @@ class GrpcTaskRunner:
         try:
             user_tasks: list[asyncio.Task] = []
             deadline = asyncio.get_running_loop().time() + max(duration or 1, 1)
+            force_stop_on_deadline = str(completion_policy or TaskCompletionPolicyEnum.GRACEFUL).lower() == TaskCompletionPolicyEnum.FORCE
+            forced_completion = False
             metrics_task = asyncio.create_task(
                 self._metrics_loop(
                     aggregator=aggregator,
@@ -83,10 +86,19 @@ class GrpcTaskRunner:
                     user_tasks.append(user_task)
                 await asyncio.sleep(1)
 
+            if force_stop_on_deadline and not control.cancel_event.is_set():
+                forced_completion = True
+                control.cancel_event.set()
+                for user_task in user_tasks:
+                    if not user_task.done():
+                        user_task.cancel()
+
             if user_tasks:
                 results = await asyncio.gather(*user_tasks, return_exceptions=True)
                 for result in results:
                     if isinstance(result, Exception):
+                        if forced_completion and isinstance(result, asyncio.CancelledError):
+                            continue
                         latest_error = str(result)
 
             await metrics_task
@@ -99,7 +111,7 @@ class GrpcTaskRunner:
 
             status = (
                 TaskRunStatusEnum.CANCELED
-                if control.cancel_event.is_set()
+                if control.cancel_event.is_set() and not forced_completion
                 else TaskRunStatusEnum.COMPLETED
             )
             await reporter.report(

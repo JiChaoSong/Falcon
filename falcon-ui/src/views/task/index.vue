@@ -301,6 +301,20 @@
           </Select>
         </Form.Item>
 
+        <Form.Item label="到时结束策略">
+          <Select v-model:value="state.formData.completion_policy">
+            <Select.Option value="graceful">自然收尾</Select.Option>
+            <Select.Option value="force">强制结束</Select.Option>
+          </Select>
+          <div class="config-tips compact-tips">
+            <span>
+              {{ state.formData.completion_policy === 'force'
+                ? '达到计划时长后会立即终止任务，未完成请求可能被中断。'
+                : '达到计划时长后会停止继续加压，并等待已创建用户完成当前执行。' }}
+            </span>
+          </div>
+        </Form.Item>
+
         <Form.Item label="任务描述">
           <Input.TextArea
             v-model:value="state.formData.description"
@@ -448,32 +462,35 @@
       :footer="null"
     >
       <div v-if="state.previewLoading" class="preview-loading">
-        <a-spin tip="正在加载任务详情..." />
+        <Spin tip="正在加载任务详情..." />
       </div>
 
       <Descriptions v-else-if="state.previewData" :column="2" bordered>
-        <DescriptionsItem label="任务ID">{{ state.previewData.id }}</DescriptionsItem>
-        <DescriptionsItem label="任务名称">{{ state.previewData.name }}</DescriptionsItem>
-        <DescriptionsItem label="所属项目">{{ state.previewData.project }}</DescriptionsItem>
-        <DescriptionsItem label="负责人">{{ state.previewData.owner }}</DescriptionsItem>
-        <DescriptionsItem label="任务状态">
+        <Descriptions.Item label="任务ID">{{ state.previewData.id }}</Descriptions.Item>
+        <Descriptions.Item label="任务名称">{{ state.previewData.name }}</Descriptions.Item>
+        <Descriptions.Item label="所属项目">{{ state.previewData.project }}</Descriptions.Item>
+        <Descriptions.Item label="负责人">{{ state.previewData.owner }}</Descriptions.Item>
+        <Descriptions.Item label="任务状态">
           <Tag :color="statusMap[state.previewData.status]?.color || 'default'">
             {{ statusMap[state.previewData.status]?.text || state.previewData.status }}
           </Tag>
-        </DescriptionsItem>
-        <DescriptionsItem label="目标地址">{{ state.previewData.host }}</DescriptionsItem>
-        <DescriptionsItem label="虚拟用户数">{{ state.previewData.users }}</DescriptionsItem>
-        <DescriptionsItem label="生成速率">{{ state.previewData.spawn_rate }}</DescriptionsItem>
-        <DescriptionsItem label="时长(秒)">{{ state.previewData.duration || '-' }}</DescriptionsItem>
-        <DescriptionsItem label="执行策略">
+        </Descriptions.Item>
+        <Descriptions.Item label="目标地址">{{ state.previewData.host }}</Descriptions.Item>
+        <Descriptions.Item label="虚拟用户数">{{ state.previewData.users }}</Descriptions.Item>
+        <Descriptions.Item label="生成速率">{{ state.previewData.spawn_rate }}</Descriptions.Item>
+        <Descriptions.Item label="时长(秒)">{{ state.previewData.duration || '-' }}</Descriptions.Item>
+        <Descriptions.Item label="执行策略">
           {{ executionStrategyMap[state.previewData.execution_strategy] || state.previewData.execution_strategy }}
-        </DescriptionsItem>
-        <DescriptionsItem label="开始时间">{{ formatDateTime(state.previewData.start_time) }}</DescriptionsItem>
-        <DescriptionsItem label="结束时间">{{ formatDateTime(state.previewData.finished_at) }}</DescriptionsItem>
-        <DescriptionsItem label="任务描述" :span="2">
+        </Descriptions.Item>
+        <Descriptions.Item label="到时结束">
+          {{ completionPolicyMap[state.previewData.completion_policy] || state.previewData.completion_policy || '-' }}
+        </Descriptions.Item>
+        <Descriptions.Item label="开始时间">{{ formatDateTime(state.previewData.start_time) }}</Descriptions.Item>
+        <Descriptions.Item label="结束时间">{{ formatDateTime(state.previewData.finished_at) }}</Descriptions.Item>
+        <Descriptions.Item label="任务描述" :span="2">
           {{ state.previewData.description || '-' }}
-        </DescriptionsItem>
-        <DescriptionsItem label="关联场景" :span="2">
+        </Descriptions.Item>
+        <Descriptions.Item label="关联场景" :span="2">
           <div class="preview-scenario-list">
             <div
               v-for="scenario in state.previewData.scenarios"
@@ -492,7 +509,7 @@
               </span>
             </div>
           </div>
-        </DescriptionsItem>
+        </Descriptions.Item>
       </Descriptions>
     </Modal>
   </div>
@@ -519,7 +536,7 @@ import {
   Divider,
   Tooltip,
   Descriptions,
-  DescriptionsItem,
+  Spin,
   message,
 } from 'ant-design-vue'
 import {
@@ -542,7 +559,7 @@ import { TaskApi } from '@/api/task'
 import { ProjectApi } from '@/api/project'
 import { ScenarioApi } from '@/api/scenario'
 import { UserApi } from '@/api/user'
-import { formatDateTime } from '@/utils/tools'
+import {formatDateTime, generateUUID} from '@/utils/tools'
 import type { ProjectInfo } from '@/types/project'
 import type { ScenarioInfo } from '@/types/scenario'
 import type { UserOption } from '@/types/user'
@@ -556,7 +573,7 @@ const route = useRoute()
 const router = useRouter()
 
 const createDefaultScenarioRow = (): FormScenarioBind => ({
-  row_key: crypto.randomUUID(),
+  row_key: generateUUID(),
   scenario_id: undefined as unknown as number,
   order: 1,
   weight: 0,
@@ -575,6 +592,7 @@ const createDefaultFormData = () => ({
   spawn_rate: 2,
   duration: 60,
   execution_strategy: 'sequential',
+  completion_policy: 'graceful',
   status: 'pending',
   scenarios: [createDefaultScenarioRow()],
 })
@@ -618,6 +636,11 @@ const statusMap: Record<string, { text: string; color: string }> = {
 const executionStrategyMap: Record<string, string> = {
   sequential: '顺序执行',
   weighted: '按权重分配',
+}
+
+const completionPolicyMap: Record<string, string> = {
+  graceful: '自然收尾',
+  force: '强制结束',
 }
 
 const selectedScenarioCount = computed(
@@ -666,6 +689,7 @@ const getScenarioDisplayName = (scenarioId?: number) => {
 const normalizeTask = (task: TaskInfo): TaskInfo => ({
   ...task,
   status: task.status?.toLowerCase() || 'pending',
+  completion_policy: task.completion_policy?.toLowerCase() || 'graceful',
   scenarios: Array.isArray(task.scenarios) ? task.scenarios : [],
 })
 
@@ -826,9 +850,10 @@ const showEditModal = async (taskId: number) => {
       spawn_rate: task.spawn_rate,
       duration: task.duration || 60,
       execution_strategy: task.execution_strategy || 'sequential',
+      completion_policy: task.completion_policy || 'graceful',
       status: task.status,
       scenarios: task.scenarios.length
-        ? task.scenarios.map(item => ({ ...item, row_key: crypto.randomUUID() }))
+        ? task.scenarios.map(item => ({ ...item, row_key: generateUUID() }))
         : [createDefaultScenarioRow()],
     }
     syncScenarioOrders()
@@ -904,6 +929,7 @@ const handleModalOk = async () => {
       spawn_rate: state.formData.spawn_rate,
       duration: state.formData.duration,
       execution_strategy: state.formData.execution_strategy,
+      completion_policy: state.formData.completion_policy,
       scenarios: buildScenariosPayload(),
     }
 
@@ -1133,6 +1159,11 @@ onMounted(async () => {
   font-size: 12px;
   line-height: 1.7;
   color: #52637a;
+}
+
+.compact-tips {
+  margin-top: 8px;
+  margin-bottom: 0;
 }
 
 .scenario-list {

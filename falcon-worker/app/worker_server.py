@@ -22,6 +22,7 @@ class WorkerRuntimeServicer(worker_runtime_pb2_grpc.WorkerRuntimeServicer):
             spawn_rate=request.task.spawn_rate,
             duration=request.task.duration,
             execution_strategy=request.task.execution_strategy,
+            completion_policy=request.task.completion_policy,
             execution_plan_json=request.task.execution_plan_json,
             control_plane_addr=request.task.control_plane_addr,
         )

@@ -611,35 +611,35 @@
       :footer="null"
     >
       <div v-if="state.previewLoading" class="preview-loading">
-        <a-spin tip="正在加载用例详情..." />
+        <Spin tip="正在加载用例详情..." />
       </div>
 
       <Tabs v-else v-model:activeKey="state.previewTab">
         <Tabs.TabPane key="info" tab="基本信息">
           <Descriptions :column="2" bordered>
-            <DescriptionsItem label="用例ID">{{ state.previewData?.id || '-' }}</DescriptionsItem>
-            <DescriptionsItem label="用例名称">{{ state.previewData?.name || '-' }}</DescriptionsItem>
-            <DescriptionsItem label="所属项目">{{ state.previewData?.project || '-' }}</DescriptionsItem>
-            <DescriptionsItem label="用例类型">
+            <Descriptions.Item label="用例ID">{{ state.previewData?.id || '-' }}</Descriptions.Item>
+            <Descriptions.Item label="用例名称">{{ state.previewData?.name || '-' }}</Descriptions.Item>
+            <Descriptions.Item label="所属项目">{{ state.previewData?.project || '-' }}</Descriptions.Item>
+            <Descriptions.Item label="用例类型">
               <Tag :color="typeMap[state.previewData?.type || '']?.color || 'default'">
                 {{ typeMap[state.previewData?.type || '']?.text || state.previewData?.type || '-' }}
               </Tag>
-            </DescriptionsItem>
-            <DescriptionsItem label="请求方法">
+            </Descriptions.Item>
+            <Descriptions.Item label="请求方法">
               <Tag :color="methodMap[state.previewData?.method || '']?.color || 'default'">
                 {{ state.previewData?.method || '-' }}
               </Tag>
-            </DescriptionsItem>
-            <DescriptionsItem label="用例状态">
+            </Descriptions.Item>
+            <Descriptions.Item label="用例状态">
               <Tag :color="statusMap[state.previewData?.status || '']?.color || 'default'">
                 {{ statusMap[state.previewData?.status || '']?.text || state.previewData?.status || '-' }}
               </Tag>
-            </DescriptionsItem>
-            <DescriptionsItem label="创建时间">{{ formatDateTime(state.previewData?.created_at) }}</DescriptionsItem>
-            <DescriptionsItem label="最后更新">{{ formatDateTime(state.previewData?.updated_at) }}</DescriptionsItem>
-            <DescriptionsItem label="用例描述" :span="2">
+            </Descriptions.Item>
+            <Descriptions.Item label="创建时间">{{ formatDateTime(state.previewData?.created_at) }}</Descriptions.Item>
+            <Descriptions.Item label="最后更新">{{ formatDateTime(state.previewData?.updated_at) }}</Descriptions.Item>
+            <Descriptions.Item label="用例描述" :span="2">
               {{ state.previewData?.description || '-' }}
-            </DescriptionsItem>
+            </Descriptions.Item>
           </Descriptions>
         </Tabs.TabPane>
 
@@ -699,7 +699,7 @@ import {
   Space,
   Divider,
   Descriptions,
-  DescriptionsItem,
+  Spin,
   Tooltip,
   Tabs,
   message,
@@ -723,7 +723,7 @@ import {
 } from '@ant-design/icons-vue'
 import { CaseApi } from '@/api/case'
 import { ProjectApi } from '@/api/project'
-import { formatDateTime } from '@/utils/tools'
+import {formatDateTime, generateUUID} from '@/utils/tools'
 import type {
   CaseHeaderItem,
   CaseImportItem,
@@ -765,8 +765,8 @@ type ImportPreviewItem = CaseImportItem & {
 }
 
 const createDefaultHeaders = () => [
-  { row_key: crypto.randomUUID(), name: 'User-Agent', value: 'Falcon/1.0' },
-  { row_key: crypto.randomUUID(), name: 'Content-Type', value: 'application/json' },
+  { row_key: generateUUID(), name: 'User-Agent', value: 'Falcon/1.0' },
+  { row_key: generateUUID(), name: 'Content-Type', value: 'application/json' },
 ]
 
 const createDefaultFormData = (): CaseFormState => ({

@@ -9,7 +9,8 @@
 
       <div class="summary-chips">
         <span class="summary-chip summary-chip-state">{{ statusName }}</span>
-        <span class="summary-chip">{{ taskInfo?.execution_strategy || "默认策略" }}</span>
+        <span class="summary-chip">{{ executionStrategyName }}</span>
+        <span class="summary-chip">{{ completionPolicyName }}</span>
         <span class="summary-chip">{{ taskInfo?.users ?? 0 }} 用户</span>
         <span class="summary-chip">{{ taskInfo?.spawn_rate ?? 0 }}/s 加压</span>
       </div>
@@ -43,6 +44,10 @@
           <span class="metric-foot">任务运行阶段</span>
         </div>
       </div>
+
+      <div v-if="isGracefulDraining" class="runtime-note">
+        已超过计划时长，当前正按“自然收尾”策略等待已创建用户完成执行。
+      </div>
     </div>
 
     <div class="panel-section">
@@ -62,7 +67,11 @@
         </div>
         <div class="info-item">
           <span class="info-label">执行策略</span>
-          <span class="info-value">{{ taskInfo?.execution_strategy || "-" }}</span>
+          <span class="info-value">{{ executionStrategyName }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">到时结束</span>
+          <span class="info-value">{{ completionPolicyName }}</span>
         </div>
         <div class="info-item">
           <span class="info-label">任务负责人</span>
@@ -173,6 +182,21 @@ const scenarios = computed(() => props.taskInfo?.scenarios || []);
 const scenariosWithCases = computed(() => scenarios.value.filter((item) => (item.cases || []).length > 0));
 const totalCases = computed(() => scenarios.value.reduce((sum, item) => sum + (item.cases?.length || 0), 0));
 const statusName = computed(() => STATE_NAMES[props.metrics?.state || "missing"] || "运行异常");
+const executionStrategyName = computed(() => {
+  const value = String(props.taskInfo?.execution_strategy || "").toLowerCase();
+  return value === "weighted" ? "按权重分配" : value === "sequential" ? "顺序执行" : props.taskInfo?.execution_strategy || "-";
+});
+const completionPolicyName = computed(() => {
+  const value = String(props.taskInfo?.completion_policy || "").toLowerCase();
+  return value === "force" ? "强制结束" : value === "graceful" ? "自然收尾" : props.taskInfo?.completion_policy || "-";
+});
+const isGracefulDraining = computed(() => {
+  const duration = Number(props.taskInfo?.duration || 0);
+  const runtimeSeconds = Number(props.metrics?.runtime_seconds || 0);
+  const state = String(props.metrics?.state || "").toLowerCase();
+  const completionPolicy = String(props.taskInfo?.completion_policy || "").toLowerCase();
+  return completionPolicy === "graceful" && duration > 0 && runtimeSeconds > duration && (state === "running" || state === "stopping");
+});
 </script>
 
 <style scoped>
@@ -194,6 +218,17 @@ const statusName = computed(() => STATE_NAMES[props.metrics?.state || "missing"]
   margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.runtime-note {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  background: rgba(255, 247, 237, 0.92);
+  color: #9a3412;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .hero-section {

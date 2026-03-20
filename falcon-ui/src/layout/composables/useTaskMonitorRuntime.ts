@@ -34,6 +34,7 @@ const createDefaultTaskInfo = (taskId: number): TaskInfo => ({
   spawn_rate: 0,
   duration: 0,
   status: "pending",
+  completion_policy: "graceful",
   start_time: null,
   runtime_seconds: 0,
   runtime: null,

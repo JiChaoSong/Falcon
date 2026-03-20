@@ -2,6 +2,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
+from app.core.config import settings
 from app.models.base import BaseModel
 
 # ⚠️ 关键：显式 import 所有 model
@@ -18,6 +19,7 @@ from app.models import (
 )
 
 config = context.config
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 fileConfig(config.config_file_name)
 
 target_metadata = BaseModel.metadata

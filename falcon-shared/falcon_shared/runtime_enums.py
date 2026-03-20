@@ -19,6 +19,11 @@ class TaskExecutionStrategyEnum(str, Enum):
     WEIGHTED = "weighted"
 
 
+class TaskCompletionPolicyEnum(str, Enum):
+    GRACEFUL = "graceful"
+    FORCE = "force"
+
+
 class TaskRunStatusEnum(str, Enum):
     PENDING = "pending"
     RUNNING = "running"

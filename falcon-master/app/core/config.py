@@ -1,12 +1,23 @@
-from typing import Any, Dict, Optional
+import json
+import os
+from pathlib import Path
+from typing import Annotated, Any, Dict, Optional
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+BASE_DIR = Path(__file__).resolve().parents[2]
+
+
+def _resolve_master_env_file() -> str:
+    raw = str(os.getenv("FALCON_MASTER_ENV_FILE", "")).strip()
+    if raw:
+        return str(Path(raw).expanduser().resolve())
+    return str(BASE_DIR / ".env")
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_resolve_master_env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -15,8 +26,7 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     DEBUG: bool = True
 
-    # FastAPI/Starlette 需要的是 list[str]，这里给出安全默认值
-    CORS_ORIGINS: list[str] = Field(default_factory=list) if not DEBUG else ["*"]
+    CORS_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=list)
     CORS_ORIGIN_WHITELIST: Any = ()
 
     REQUEST_LOGGING: bool = True
@@ -25,7 +35,7 @@ class Settings(BaseSettings):
     HOST: str = "127.0.0.1"
     PORT: int = 8008
 
-    DATABASE_URL: str = "mysql+pymysql://root:123456@localhost:3306/perflocust"
+    DATABASE_URL: str | None = None
 
     POOL_PRE_PING: bool = True
     POOL_SIZE: int = 10
@@ -40,8 +50,8 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    SECRET_KEY: str = "change-me-secret-key"
-    REFRESH_SECRET_KEY: str = "change-me-refresh-secret-key"
+    SECRET_KEY: str | None = None
+    REFRESH_SECRET_KEY: str | None = None
     ALGORITHM: str = "HS256"
 
     AUTH_WHITELIST: list[str] = Field(
@@ -59,7 +69,7 @@ class Settings(BaseSettings):
 
     GRPC_MASTER_HOST: str = "127.0.0.1"
     GRPC_MASTER_PORT: int = 50051
-    WORKER_SHARED_TOKEN: str = "change-me-worker-token"
+    WORKER_SHARED_TOKEN: str | None = None
     GRPC_WORKER_TAGS: str = ""
     GRPC_WORKER_METADATA_JSON: str = "{}"
     GRPC_WORKER_CAPACITY: int = 4
@@ -174,5 +184,48 @@ class Settings(BaseSettings):
         "literal_error": "字面量值不匹配",
         "missing_sentinel_error": "未检测到标记值",
     }
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: Any) -> list[str]:
+        if value in (None, "", (), []):
+            return []
+
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return []
+            if raw.startswith("["):
+                parsed = json.loads(raw)
+                if not isinstance(parsed, list):
+                    raise ValueError("CORS_ORIGINS JSON value must be a list")
+                return [str(item).strip() for item in parsed if str(item).strip()]
+            return [item.strip() for item in raw.split(",") if item.strip()]
+
+        raise TypeError("CORS_ORIGINS must be a list or comma-separated string")
+
+    @model_validator(mode="after")
+    def validate_sensitive_settings(self):
+        is_local = self.ENVIRONMENT.lower() in {"local", "dev", "development"}
+
+        if is_local:
+            self.DATABASE_URL = self.DATABASE_URL or "mysql+pymysql://root:123456@localhost:3306/falcon"
+            self.SECRET_KEY = self.SECRET_KEY or "local-dev-secret-key"
+            self.REFRESH_SECRET_KEY = self.REFRESH_SECRET_KEY or "local-dev-refresh-secret-key"
+            self.WORKER_SHARED_TOKEN = self.WORKER_SHARED_TOKEN or "local-dev-worker-token"
+            return self
+
+        missing = []
+        for field_name in ("DATABASE_URL", "SECRET_KEY", "REFRESH_SECRET_KEY", "WORKER_SHARED_TOKEN"):
+            if not getattr(self, field_name):
+                missing.append(field_name)
+
+        if missing:
+            raise ValueError(f"Missing required sensitive settings: {', '.join(missing)}")
+
+        return self
 
 settings = Settings()

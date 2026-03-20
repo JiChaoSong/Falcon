@@ -164,6 +164,7 @@ class TaskRuntimeService:
             "owner": task.owner,
             "host": task.host,
             "execution_strategy": task.execution_strategy,
+            "completion_policy": task.completion_policy,
             "scenario_count": len(scenario_count),
             "status": status_payload.get("status"),
             "started_at": status_payload.get("started_at"),
