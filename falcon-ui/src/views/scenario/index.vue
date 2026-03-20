@@ -296,24 +296,24 @@
       :footer="null"
     >
       <div v-if="state.previewLoading" class="preview-loading">
-        <a-spin tip="正在加载场景详情..." />
+        <Spin tip="正在加载场景详情..." />
       </div>
 
       <Descriptions v-else-if="state.previewData" :column="2" bordered>
-        <DescriptionsItem label="场景ID">{{ state.previewData.id }}</DescriptionsItem>
-        <DescriptionsItem label="场景名称">{{ state.previewData.name }}</DescriptionsItem>
-        <DescriptionsItem label="所属项目">{{ state.previewData.project }}</DescriptionsItem>
-        <DescriptionsItem label="场景状态">
+        <Descriptions.Item label="场景ID">{{ state.previewData.id }}</Descriptions.Item>
+        <Descriptions.Item label="场景名称">{{ state.previewData.name }}</Descriptions.Item>
+        <Descriptions.Item label="所属项目">{{ state.previewData.project }}</Descriptions.Item>
+        <Descriptions.Item label="场景状态">
           <Tag :color="statusMap[state.previewData.status]?.color || 'default'">
             {{ statusMap[state.previewData.status]?.text || state.previewData.status }}
           </Tag>
-        </DescriptionsItem>
-        <DescriptionsItem label="创建时间">{{ formatDateTime(state.previewData.created_at) }}</DescriptionsItem>
-        <DescriptionsItem label="最后运行">{{ formatDateTime(state.previewData.last_run) }}</DescriptionsItem>
-        <DescriptionsItem label="场景描述" :span="2">
+        </Descriptions.Item>
+        <Descriptions.Item label="创建时间">{{ formatDateTime(state.previewData.created_at) }}</Descriptions.Item>
+        <Descriptions.Item label="最后运行">{{ formatDateTime(state.previewData.last_run) }}</Descriptions.Item>
+        <Descriptions.Item label="场景描述" :span="2">
           {{ state.previewData.description || '-' }}
-        </DescriptionsItem>
-        <DescriptionsItem label="关联用例" :span="2">
+        </Descriptions.Item>
+        <Descriptions.Item label="关联用例" :span="2">
           <div class="preview-case-list">
             <div
               v-for="caseBind in state.previewData.cases"
@@ -324,7 +324,7 @@
               <span class="subtle-text">顺序 {{ caseBind.order }} / 权重 {{ caseBind.weight }}</span>
             </div>
           </div>
-        </DescriptionsItem>
+        </Descriptions.Item>
       </Descriptions>
     </Modal>
   </div>
@@ -348,7 +348,7 @@ import {
   Space,
   Divider,
   Descriptions,
-  DescriptionsItem,
+  Spin,
   Tooltip,
   message,
 } from 'ant-design-vue'
@@ -368,7 +368,7 @@ import {
 import { ScenarioApi } from '@/api/scenario'
 import { ProjectApi } from '@/api/project'
 import { CaseApi } from '@/api/case'
-import { formatDateTime } from '@/utils/tools'
+import {formatDateTime, generateUUID} from '@/utils/tools'
 import type { ProjectInfo } from '@/types/project'
 import type { CaseInfo } from '@/types/case'
 import type { ScenarioCaseBind, ScenarioCaseSummary, ScenarioInfo, ScenarioListItem } from '@/types/scenario'
@@ -376,7 +376,7 @@ import type { ScenarioCaseBind, ScenarioCaseSummary, ScenarioInfo, ScenarioListI
 type FormCaseBind = ScenarioCaseBind & { row_key: string }
 
 const createDefaultCaseRow = (): FormCaseBind => ({
-  row_key: crypto.randomUUID(),
+  row_key: generateUUID(),
   case_id: undefined as unknown as number,
   order: 1,
   weight: 100,
@@ -609,7 +609,7 @@ const showEditModal = async (scenarioId: number) => {
       status: scenario.status,
       description: scenario.description || '',
       cases: scenario.cases.length
-        ? scenario.cases.map(item => ({ ...item, row_key: crypto.randomUUID() }))
+        ? scenario.cases.map(item => ({ ...item, row_key: generateUUID() }))
         : [createDefaultCaseRow()],
     }
     syncCaseMeta()

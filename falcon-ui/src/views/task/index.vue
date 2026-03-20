@@ -448,32 +448,32 @@
       :footer="null"
     >
       <div v-if="state.previewLoading" class="preview-loading">
-        <a-spin tip="正在加载任务详情..." />
+        <Spin tip="正在加载任务详情..." />
       </div>
 
       <Descriptions v-else-if="state.previewData" :column="2" bordered>
-        <DescriptionsItem label="任务ID">{{ state.previewData.id }}</DescriptionsItem>
-        <DescriptionsItem label="任务名称">{{ state.previewData.name }}</DescriptionsItem>
-        <DescriptionsItem label="所属项目">{{ state.previewData.project }}</DescriptionsItem>
-        <DescriptionsItem label="负责人">{{ state.previewData.owner }}</DescriptionsItem>
-        <DescriptionsItem label="任务状态">
+        <Descriptions.Item label="任务ID">{{ state.previewData.id }}</Descriptions.Item>
+        <Descriptions.Item label="任务名称">{{ state.previewData.name }}</Descriptions.Item>
+        <Descriptions.Item label="所属项目">{{ state.previewData.project }}</Descriptions.Item>
+        <Descriptions.Item label="负责人">{{ state.previewData.owner }}</Descriptions.Item>
+        <Descriptions.Item label="任务状态">
           <Tag :color="statusMap[state.previewData.status]?.color || 'default'">
             {{ statusMap[state.previewData.status]?.text || state.previewData.status }}
           </Tag>
-        </DescriptionsItem>
-        <DescriptionsItem label="目标地址">{{ state.previewData.host }}</DescriptionsItem>
-        <DescriptionsItem label="虚拟用户数">{{ state.previewData.users }}</DescriptionsItem>
-        <DescriptionsItem label="生成速率">{{ state.previewData.spawn_rate }}</DescriptionsItem>
-        <DescriptionsItem label="时长(秒)">{{ state.previewData.duration || '-' }}</DescriptionsItem>
-        <DescriptionsItem label="执行策略">
+        </Descriptions.Item>
+        <Descriptions.Item label="目标地址">{{ state.previewData.host }}</Descriptions.Item>
+        <Descriptions.Item label="虚拟用户数">{{ state.previewData.users }}</Descriptions.Item>
+        <Descriptions.Item label="生成速率">{{ state.previewData.spawn_rate }}</Descriptions.Item>
+        <Descriptions.Item label="时长(秒)">{{ state.previewData.duration || '-' }}</Descriptions.Item>
+        <Descriptions.Item label="执行策略">
           {{ executionStrategyMap[state.previewData.execution_strategy] || state.previewData.execution_strategy }}
-        </DescriptionsItem>
-        <DescriptionsItem label="开始时间">{{ formatDateTime(state.previewData.start_time) }}</DescriptionsItem>
-        <DescriptionsItem label="结束时间">{{ formatDateTime(state.previewData.finished_at) }}</DescriptionsItem>
-        <DescriptionsItem label="任务描述" :span="2">
+        </Descriptions.Item>
+        <Descriptions.Item label="开始时间">{{ formatDateTime(state.previewData.start_time) }}</Descriptions.Item>
+        <Descriptions.Item label="结束时间">{{ formatDateTime(state.previewData.finished_at) }}</Descriptions.Item>
+        <Descriptions.Item label="任务描述" :span="2">
           {{ state.previewData.description || '-' }}
-        </DescriptionsItem>
-        <DescriptionsItem label="关联场景" :span="2">
+        </Descriptions.Item>
+        <Descriptions.Item label="关联场景" :span="2">
           <div class="preview-scenario-list">
             <div
               v-for="scenario in state.previewData.scenarios"
@@ -492,7 +492,7 @@
               </span>
             </div>
           </div>
-        </DescriptionsItem>
+        </Descriptions.Item>
       </Descriptions>
     </Modal>
   </div>
@@ -519,7 +519,7 @@ import {
   Divider,
   Tooltip,
   Descriptions,
-  DescriptionsItem,
+  Spin,
   message,
 } from 'ant-design-vue'
 import {
@@ -542,7 +542,7 @@ import { TaskApi } from '@/api/task'
 import { ProjectApi } from '@/api/project'
 import { ScenarioApi } from '@/api/scenario'
 import { UserApi } from '@/api/user'
-import { formatDateTime } from '@/utils/tools'
+import {formatDateTime, generateUUID} from '@/utils/tools'
 import type { ProjectInfo } from '@/types/project'
 import type { ScenarioInfo } from '@/types/scenario'
 import type { UserOption } from '@/types/user'
@@ -556,7 +556,7 @@ const route = useRoute()
 const router = useRouter()
 
 const createDefaultScenarioRow = (): FormScenarioBind => ({
-  row_key: crypto.randomUUID(),
+  row_key: generateUUID(),
   scenario_id: undefined as unknown as number,
   order: 1,
   weight: 0,
@@ -828,7 +828,7 @@ const showEditModal = async (taskId: number) => {
       execution_strategy: task.execution_strategy || 'sequential',
       status: task.status,
       scenarios: task.scenarios.length
-        ? task.scenarios.map(item => ({ ...item, row_key: crypto.randomUUID() }))
+        ? task.scenarios.map(item => ({ ...item, row_key: generateUUID() }))
         : [createDefaultScenarioRow()],
     }
     syncScenarioOrders()
