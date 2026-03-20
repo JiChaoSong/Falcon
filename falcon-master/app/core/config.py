@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     HOST: str = "127.0.0.1"
     PORT: int = 8008
 
-    DATABASE_URL: str = "mysql+pymysql://root:123456@localhost:3306/falcon"
+    DATABASE_URL: str | None = None
 
     POOL_PRE_PING: bool = True
     POOL_SIZE: int = 10
@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    SECRET_KEY: str = "change-me-secret-key"
-    REFRESH_SECRET_KEY: str = "change-me-refresh-secret-key"
+    SECRET_KEY: str | None = None
+    REFRESH_SECRET_KEY: str | None = None
     ALGORITHM: str = "HS256"
 
     AUTH_WHITELIST: list[str] = Field(
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
 
     GRPC_MASTER_HOST: str = "127.0.0.1"
     GRPC_MASTER_PORT: int = 50051
-    WORKER_SHARED_TOKEN: str = "change-me-worker-token"
+    WORKER_SHARED_TOKEN: str | None = None
     GRPC_WORKER_TAGS: str = ""
     GRPC_WORKER_METADATA_JSON: str = "{}"
     GRPC_WORKER_CAPACITY: int = 4
@@ -173,5 +173,26 @@ class Settings(BaseSettings):
         "literal_error": "字面量值不匹配",
         "missing_sentinel_error": "未检测到标记值",
     }
+
+    @model_validator(mode="after")
+    def validate_sensitive_settings(self):
+        is_local = self.ENVIRONMENT.lower() in {"local", "dev", "development"}
+
+        if is_local:
+            self.DATABASE_URL = self.DATABASE_URL or "mysql+pymysql://root:123456@localhost:3306/perflocust"
+            self.SECRET_KEY = self.SECRET_KEY or "local-dev-secret-key"
+            self.REFRESH_SECRET_KEY = self.REFRESH_SECRET_KEY or "local-dev-refresh-secret-key"
+            self.WORKER_SHARED_TOKEN = self.WORKER_SHARED_TOKEN or "local-dev-worker-token"
+            return self
+
+        missing = []
+        for field_name in ("DATABASE_URL", "SECRET_KEY", "REFRESH_SECRET_KEY", "WORKER_SHARED_TOKEN"):
+            if not getattr(self, field_name):
+                missing.append(field_name)
+
+        if missing:
+            raise ValueError(f"Missing required sensitive settings: {', '.join(missing)}")
+
+        return self
 
 settings = Settings()
