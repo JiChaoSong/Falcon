@@ -15,8 +15,7 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     DEBUG: bool = True
 
-    # FastAPI/Starlette 需要的是 list[str]，这里给出安全默认值
-    CORS_ORIGINS: list[str] = Field(default_factory=list) if not DEBUG else ["*"]
+    CORS_ORIGINS: list[str] = Field(default_factory=list)
     CORS_ORIGIN_WHITELIST: Any = ()
 
     REQUEST_LOGGING: bool = True
